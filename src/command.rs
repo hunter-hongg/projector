@@ -11,4 +11,7 @@ pub struct Projector {
 #[derive(Subcommand)]
 pub enum Commands {
   Version,
+  List {
+    dir: Option<String>,
+  },
 }
