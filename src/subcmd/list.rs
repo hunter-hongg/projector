@@ -1,11 +1,11 @@
-use std::{fmt::Debug, fs};
+use std::fs;
 
 use anyhow::Result;
 
 use crate::color;
 
 fn listdir(dir: &String) -> Result<Vec<String>> {
-  let entries = fs::read_dir(&dir)?;
+  let entries = fs::read_dir(dir)?;
   let mut dirs = Vec::new();
   for entry in entries {
     let entry = entry?;
@@ -42,7 +42,7 @@ pub fn subcmd_list(dir: Option<String>) -> Result<()> {
     }
   }
   println!("{}", color::info("listing directories..."));
-  println!("");
+  println!();
   println!("{}", color::green("Projects:"));
   for i in has_git {
     let project_type = 
@@ -85,7 +85,7 @@ pub fn subcmd_list(dir: Option<String>) -> Result<()> {
         prettier_type
       ), prettier_last_modified);
   }
-  println!("");
+  println!();
   println!("{}", color::green("Other directories:"));
   for i in no_git {
     println!("dir {}: ", color::red(&i))
