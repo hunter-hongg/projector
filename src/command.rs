@@ -14,4 +14,25 @@ pub enum Commands {
   List {
     dir: Option<String>,
   },
+  Scan {
+    dir: Option<String>,
+  },
+  Report {
+    #[arg(long)]
+    diff: bool,
+    #[arg(short = 'f', long = "format")]
+    format: Option<String>,
+  },
+  Config {
+    #[command(subcommand)]
+    action: Option<ConfigAction>,
+  },
+}
+
+#[derive(Subcommand)]
+pub enum ConfigAction {
+  Set {
+    key: String,
+    value: String,
+  },
 }
