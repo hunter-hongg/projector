@@ -5,8 +5,8 @@ use anyhow::Result;
 use chrono::Utc;
 
 use crate::analyzer::analyze_project;
-use crate::snapshot::{ScanSnapshot, SnapshotStore};
 use crate::config::Config;
+use crate::snapshot::{ScanSnapshot, SnapshotStore};
 
 pub fn subcmd_scan(dir: Option<String>) -> Result<()> {
     let config = Config::load()?;
@@ -43,6 +43,9 @@ pub fn subcmd_scan(dir: Option<String>) -> Result<()> {
     };
 
     SnapshotStore::save(&snapshot)?;
-    println!("Scanned {} projects, snapshot saved.", snapshot.projects.len());
+    println!(
+        "Scanned {} projects, snapshot saved.",
+        snapshot.projects.len()
+    );
     Ok(())
 }

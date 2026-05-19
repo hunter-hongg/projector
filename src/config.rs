@@ -11,7 +11,6 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanConfig {
     pub default_path: String,
-    pub max_depth: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,7 +23,6 @@ impl Default for Config {
         Self {
             scan: ScanConfig {
                 default_path: ".".to_string(),
-                max_depth: 1,
             },
             report: ReportConfig {
                 stale_threshold_days: 90,
@@ -68,12 +66,9 @@ impl Config {
     pub fn set(&mut self, key: &str, value: &str) -> Result<()> {
         match key {
             "scan.default_path" => self.scan.default_path = value.to_string(),
-            "scan.max_depth" => {
-                self.scan.max_depth = value.parse()
-                    .map_err(|_| anyhow::anyhow!("max_depth must be a number"))?
-            }
             "report.stale_threshold_days" => {
-                self.report.stale_threshold_days = value.parse()
+                self.report.stale_threshold_days = value
+                    .parse()
                     .map_err(|_| anyhow::anyhow!("stale_threshold_days must be a number"))?
             }
             _ => anyhow::bail!("Unknown config key: {}", key),
@@ -83,7 +78,59 @@ impl Config {
 }
 
 pub fn snapshot_dir() -> PathBuf {
-    let dir = projector_dir().join("snapshots");
-    let _ = std::fs::create_dir_all(&dir);
-    dir
+    projector_dir().join("snapshots")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_default() {
+        let config = Config::default();
+        assert_eq!(config.scan.default_path, ".");
+        assert_eq!(config.report.stale_threshold_days, 90);
+    }
+
+    #[test]
+    fn test_config_set_scan_path() {
+        let mut config = Config::default();
+        config.set("scan.default_path", "/tmp/projects").unwrap();
+        assert_eq!(config.scan.default_path, "/tmp/projects");
+    }
+
+    #[test]
+    fn test_config_set_stale_threshold() {
+        let mut config = Config::default();
+        config.set("report.stale_threshold_days", "30").unwrap();
+        assert_eq!(config.report.stale_threshold_days, 30);
+    }
+
+    #[test]
+    fn test_config_set_invalid_key() {
+        let mut config = Config::default();
+        let result = config.set("foo.bar", "value");
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Unknown config key")
+        );
+    }
+
+    #[test]
+    fn test_config_set_stale_threshold_non_number() {
+        let mut config = Config::default();
+        let result = config.set("report.stale_threshold_days", "not_a_number");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_path_contains_home() {
+        let path = Config::path();
+        let home = std::env::var("HOME").unwrap();
+        assert!(path.to_string_lossy().contains(&home));
+        assert!(path.to_string_lossy().ends_with(".projector/config.toml"));
+    }
 }

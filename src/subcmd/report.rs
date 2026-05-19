@@ -1,15 +1,24 @@
 use anyhow::Result;
 
 use crate::color;
+use crate::config::Config;
 use crate::snapshot::SnapshotStore;
 
 pub fn subcmd_report(diff: bool, format: Option<String>) -> Result<()> {
+    let config = Config::load()?;
+    let stale_threshold = config.report.stale_threshold_days;
     let format = format.unwrap_or_default();
+    if !format.is_empty() && format != "json" && format != "md" {
+        anyhow::bail!("Unsupported format: '{}'. Use 'json' or 'md'.", format);
+    }
 
     let latest = match SnapshotStore::load_latest()? {
         Some(s) => s,
         None => {
-            println!("{}", color::error("No snapshots found. Run `projector scan` first."));
+            println!(
+                "{}",
+                color::error("No snapshots found. Run `projector scan` first.")
+            );
             return Ok(());
         }
     };
@@ -22,16 +31,20 @@ pub fn subcmd_report(diff: bool, format: Option<String>) -> Result<()> {
     if format == "md" {
         println!("# Project Health Report");
         println!();
-        println!("Scanned: {} | Path: {}", latest.timestamp.format("%Y-%m-%d %H:%M:%S"), latest.scanned_path);
+        println!(
+            "Scanned: {} | Path: {}",
+            latest.timestamp.format("%Y-%m-%d %H:%M:%S"),
+            latest.scanned_path
+        );
         println!();
         println!("| Project | Type | Branch | Status | Last Commit | Health |");
         println!("|---------|------|--------|--------|-------------|--------|");
         for p in &latest.projects {
-            let status = status_label(p.is_dirty, p.last_commit_date);
+            let status = status_label(p.is_dirty, p.last_commit_date, stale_threshold);
             let health = format!("{}/100", p.health_score);
             println!(
                 "| {} | {} | {} | {} | {} | {} |",
-                p.path.split('/').last().unwrap_or(&p.path),
+                p.path.split('/').next_back().unwrap_or(&p.path),
                 p.project_type,
                 p.git_branch,
                 status,
@@ -43,25 +56,42 @@ pub fn subcmd_report(diff: bool, format: Option<String>) -> Result<()> {
     }
 
     println!();
-    println!("  {}", color::info(format!("Project Health Dashboard — {} — {}", latest.timestamp.format("%Y-%m-%d %H:%M:%S"), latest.scanned_path).as_str()));
+    println!(
+        "  {}",
+        color::info(
+            format!(
+                "Project Health Dashboard — {} — {}",
+                latest.timestamp.format("%Y-%m-%d %H:%M:%S"),
+                latest.scanned_path
+            )
+            .as_str()
+        )
+    );
     println!();
 
     const W: [usize; 6] = [28, 22, 12, 8, 12, 8];
 
     println!("{}", table_top(&W));
-    println!("{}", table_row(&W, &[
-        color::cyan("Project"),
-        color::cyan("Type"),
-        color::cyan("Branch"),
-        color::cyan("Status"),
-        color::cyan("Last Commit"),
-        color::cyan("Health"),
-    ].map(|s| s.to_string())));
+    println!(
+        "{}",
+        table_row(
+            &W,
+            &[
+                color::cyan("Project"),
+                color::cyan("Type"),
+                color::cyan("Branch"),
+                color::cyan("Status"),
+                color::cyan("Last Commit"),
+                color::cyan("Health"),
+            ]
+            .map(|s| s.to_string())
+        )
+    );
     println!("{}", table_sep(&W));
 
     for (i, p) in latest.projects.iter().enumerate() {
-        let name = p.path.split('/').last().unwrap_or(&p.path);
-        let status = status_label(p.is_dirty, p.last_commit_date);
+        let name = p.path.split('/').next_back().unwrap_or(&p.path);
+        let status = status_label(p.is_dirty, p.last_commit_date, stale_threshold);
 
         let health_str = format!("{}/100", p.health_score);
         let health_colored = if p.health_score >= 80 {
@@ -73,7 +103,7 @@ pub fn subcmd_report(diff: bool, format: Option<String>) -> Result<()> {
         };
 
         let commit_date = p.last_commit_date.format("%Y-%m-%d").to_string();
-        let commit_colored = if is_stale(p.last_commit_date) {
+        let commit_colored = if is_stale(p.last_commit_date, stale_threshold) {
             color::red(&commit_date)
         } else {
             color::white(&commit_date)
@@ -85,14 +115,20 @@ pub fn subcmd_report(diff: bool, format: Option<String>) -> Result<()> {
             p.git_branch.clone()
         };
 
-        println!("{}", table_row(&W, &[
-            color::blue(name),
-            p.project_type.clone(),
-            branch_display,
-            status,
-            commit_colored,
-            health_colored,
-        ]));
+        println!(
+            "{}",
+            table_row(
+                &W,
+                &[
+                    color::blue(name),
+                    p.project_type.clone(),
+                    branch_display,
+                    status,
+                    commit_colored,
+                    health_colored,
+                ]
+            )
+        );
 
         if i < latest.projects.len() - 1 {
             println!("{}", table_sep(&W));
@@ -133,7 +169,7 @@ fn visible_width(s: &str) -> usize {
     let mut chars = s.chars();
     while let Some(c) = chars.next() {
         if c == '\x1b' {
-            while let Some(c) = chars.next() {
+            for c in chars.by_ref() {
                 if c == 'm' {
                     break;
                 }
@@ -206,18 +242,22 @@ fn table_bottom(widths: &[usize]) -> String {
     s
 }
 
-fn status_label(is_dirty: bool, last_commit: chrono::NaiveDateTime) -> String {
+fn status_label(
+    is_dirty: bool,
+    last_commit: chrono::NaiveDateTime,
+    stale_threshold_days: u32,
+) -> String {
     if is_dirty {
         return color::yellow("dirty").to_string();
     }
-    if is_stale(last_commit) {
+    if is_stale(last_commit, stale_threshold_days) {
         return color::red("stale").to_string();
     }
     color::green("clean").to_string()
 }
 
-fn is_stale(last_commit: chrono::NaiveDateTime) -> bool {
+fn is_stale(last_commit: chrono::NaiveDateTime, stale_threshold_days: u32) -> bool {
     let now = chrono::Utc::now().naive_utc();
     let days = (now - last_commit).num_days();
-    days >= 90
+    days >= stale_threshold_days as i64
 }

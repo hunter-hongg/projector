@@ -43,7 +43,10 @@ impl ProjectType {
             Ok(ProjectType::JavaScript)
         } else if has_file(dir, "go.mod")? {
             Ok(ProjectType::Go)
-        } else if has_file(dir, "requirements.txt")? || has_file(dir, "setup.py")? || has_file(dir, "pyproject.toml")? {
+        } else if has_file(dir, "requirements.txt")?
+            || has_file(dir, "setup.py")?
+            || has_file(dir, "pyproject.toml")?
+        {
             Ok(ProjectType::Python)
         } else if has_file(dir, "build.gradle")? || has_file(dir, "pom.xml")? {
             Ok(ProjectType::JavaKotlin)
@@ -79,8 +82,7 @@ fn detect_by_extensions(dir: &Path) -> ProjectType {
         + counts.get("hpp").copied().unwrap_or(0)
         + counts.get("cc").copied().unwrap_or(0)
         + counts.get("cxx").copied().unwrap_or(0);
-    let ocaml = counts.get("ml").copied().unwrap_or(0)
-        + counts.get("mli").copied().unwrap_or(0);
+    let ocaml = counts.get("ml").copied().unwrap_or(0) + counts.get("mli").copied().unwrap_or(0);
     let dart = counts.get("dart").copied().unwrap_or(0);
 
     let candidates = [
@@ -94,12 +96,20 @@ fn detect_by_extensions(dir: &Path) -> ProjectType {
         (dart, ProjectType::Dart),
     ];
 
-    candidates
-        .into_iter()
-        .max_by_key(|(count, _)| *count)
-        .filter(|(count, _)| *count > 0)
-        .map(|(_, pt)| pt)
-        .unwrap_or(ProjectType::Unknown)
+    let max_count = candidates
+        .iter()
+        .map(|(c, _)| c)
+        .max()
+        .copied()
+        .unwrap_or(0);
+    if max_count == 0 {
+        return ProjectType::Unknown;
+    }
+    let top: Vec<_> = candidates.iter().filter(|(c, _)| *c == max_count).collect();
+    if top.len() == 1 {
+        return top[0].1.clone();
+    }
+    ProjectType::Unknown
 }
 
 fn scan_dir_for_extensions(dir: &Path, counts: &mut HashMap<String, u32>) {
@@ -112,10 +122,8 @@ fn scan_dir_for_extensions(dir: &Path, counts: &mut HashMap<String, u32>) {
                     continue;
                 }
                 scan_dir_for_extensions(&path, counts);
-            } else if path.is_file() {
-                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    *counts.entry(ext.to_string()).or_insert(0) += 1;
-                }
+            } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                *counts.entry(ext.to_string()).or_insert(0) += 1;
             }
         }
     }
@@ -127,10 +135,8 @@ fn has_file(dir: &Path, file: &str) -> Result<bool> {
     }
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
-        if let Some(name) = entry.file_name().to_str() {
-            if name.eq_ignore_ascii_case(file) {
-                return Ok(true);
-            }
+        if entry.file_name() == file {
+            return Ok(true);
         }
     }
     Ok(false)
@@ -170,7 +176,8 @@ pub fn git_health(dir: &Path) -> Result<Option<GitHealth>> {
 
     let unpushed_commits = count_unpublished(&repo, &head)?;
 
-    let last_commit_date = head.peel_to_commit()
+    let last_commit_date = head
+        .peel_to_commit()
         .ok()
         .map(|c| {
             let time = c.time();
@@ -178,9 +185,9 @@ pub fn git_health(dir: &Path) -> Result<Option<GitHealth>> {
             Utc.timestamp_opt(secs, 0)
                 .single()
                 .map(|dt| dt.naive_utc())
-                .unwrap_or(NaiveDateTime::default())
+                .unwrap_or_default()
         })
-        .unwrap_or(NaiveDateTime::default());
+        .unwrap_or_default();
 
     Ok(Some(GitHealth {
         branch,
@@ -217,40 +224,36 @@ fn count_unpublished(repo: &Repository, head: &git2::Reference) -> Result<u32> {
         Err(_) => return Ok(0),
     };
 
-    let mut revwalk = match repo.revwalk() {
-        Ok(w) => w,
-        Err(_) => return Ok(0),
-    };
-
-    let _ = revwalk.push(local_commit.id());
-    let _ = revwalk.hide(merge_base);
+    let mut revwalk = repo.revwalk()?;
+    revwalk.push(local_commit.id())?;
+    revwalk.hide(merge_base)?;
 
     Ok(revwalk.count() as u32)
 }
 
+const COUNTABLE_EXTENSIONS: &[&str] = &[
+    "rs", "js", "ts", "jsx", "tsx", "go", "py", "java", "kt", "kts", "c", "h", "cpp", "hpp", "cc",
+    "cxx", "ml", "mli", "dart", "toml", "json", "yaml", "yml", "md", "css", "html",
+];
+
 pub fn estimate_loc(dir: &Path) -> u32 {
-    let extensions = [
-        "rs", "js", "ts", "jsx", "tsx", "go", "py", "java", "kt", "kts",
-        "c", "h", "cpp", "hpp", "cc", "cxx", "ml", "mli", "dart",
-        "toml", "json", "yaml", "yml", "md", "css", "html",
-    ];
     let mut total = 0u32;
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if name.starts_with('.') || name == "node_modules" || name == "target" {
-                    continue;
-                }
-                total += estimate_loc(&path);
-            } else if path.is_file() {
-                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    if extensions.contains(&ext) {
-                        if let Ok(content) = fs::read_to_string(&path) {
-                            total += content.lines().count() as u32;
-                        }
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        if let Ok(entries) = fs::read_dir(&current) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if name.starts_with('.') || name == "node_modules" || name == "target" {
+                        continue;
                     }
+                    stack.push(path);
+                } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
+                    && COUNTABLE_EXTENSIONS.contains(&ext)
+                    && let Ok(content) = fs::read_to_string(&path)
+                {
+                    total += content.lines().count() as u32;
                 }
             }
         }
@@ -297,13 +300,10 @@ pub fn compute_health_score(
 pub fn analyze_project(dir: &Path, stale_threshold_days: u32) -> Result<Option<ProjectSnapshot>> {
     let project_type = ProjectType::detect(dir)?;
 
-    let git = git_health(dir)?;
-
-    let has_git = dir.join(".git").is_dir();
-
-    if !has_git {
-        return Ok(None);
-    }
+    let git = match git_health(dir)? {
+        Some(g) => g,
+        None => return Ok(None),
+    };
 
     let lines_of_code = estimate_loc(dir);
 
@@ -317,19 +317,14 @@ pub fn analyze_project(dir: &Path, stale_threshold_days: u32) -> Result<Option<P
             Utc.timestamp_opt(secs, 0)
                 .single()
                 .map(|dt| dt.naive_utc())
-                .unwrap_or(NaiveDateTime::default())
+                .unwrap_or_default()
         })
-        .unwrap_or(NaiveDateTime::default());
-
-    let (git_branch, is_dirty, unpushed_commits, last_commit_date) = match git {
-        Some(h) => (h.branch, h.is_dirty, h.unpushed_commits, h.last_commit_date),
-        None => ("no git history".to_string(), false, 0, last_modified_date),
-    };
+        .unwrap_or_default();
 
     let health_score = compute_health_score(
-        is_dirty,
-        unpushed_commits,
-        last_commit_date,
+        git.is_dirty,
+        git.unpushed_commits,
+        git.last_commit_date,
         last_modified_date,
         lines_of_code,
         stale_threshold_days,
@@ -338,12 +333,116 @@ pub fn analyze_project(dir: &Path, stale_threshold_days: u32) -> Result<Option<P
     Ok(Some(ProjectSnapshot {
         path: dir.to_string_lossy().to_string(),
         project_type: project_type.as_str().to_string(),
-        git_branch,
-        is_dirty,
-        unpushed_commits,
-        last_commit_date,
+        git_branch: git.branch,
+        is_dirty: git.is_dirty,
+        unpushed_commits: git.unpushed_commits,
+        last_commit_date: git.last_commit_date,
         last_modified_date,
         lines_of_code,
         health_score,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    #[test]
+    fn test_health_score_perfect() {
+        let now = Utc::now().naive_utc();
+        let score = compute_health_score(false, 0, now, now, 500, 90);
+        assert_eq!(score, 100);
+    }
+
+    #[test]
+    fn test_health_score_dirty() {
+        let now = Utc::now().naive_utc();
+        let score = compute_health_score(true, 0, now, now, 500, 90);
+        assert_eq!(score, 90);
+    }
+
+    #[test]
+    fn test_health_score_unpushed_commits() {
+        let now = Utc::now().naive_utc();
+        let score = compute_health_score(false, 5, now, now, 500, 90);
+        assert_eq!(score, 95);
+    }
+
+    #[test]
+    fn test_health_score_stale() {
+        let now = Utc::now().naive_utc();
+        let old = Utc.timestamp_opt(0, 0).single().unwrap().naive_utc();
+        let score = compute_health_score(false, 0, old, now, 500, 90);
+        assert!(score < 100);
+        assert_eq!(score, 85);
+    }
+
+    #[test]
+    fn test_health_score_floor() {
+        let old = Utc.timestamp_opt(0, 0).single().unwrap().naive_utc();
+        let score = compute_health_score(true, 200, old, old, 50, 30);
+        assert_eq!(score, 0);
+    }
+
+    #[test]
+    fn test_health_score_small_project() {
+        let now = Utc::now().naive_utc();
+        let score = compute_health_score(false, 0, now, now, 50, 90);
+        assert_eq!(score, 95);
+    }
+
+    #[test]
+    fn test_project_type_detect_rust() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let pt = ProjectType::detect(dir).unwrap();
+        assert_eq!(pt, ProjectType::Rust);
+    }
+
+    #[test]
+    fn test_project_type_as_str() {
+        assert_eq!(ProjectType::Rust.as_str(), "Rust");
+        assert_eq!(ProjectType::JavaScript.as_str(), "JavaScript/TypeScript");
+        assert_eq!(ProjectType::Unknown.as_str(), "Unknown");
+    }
+
+    #[test]
+    fn test_project_type_detect_unknown() {
+        let dir = Path::new("/nonexistent_path_42");
+        let pt = ProjectType::detect(dir).unwrap();
+        assert_eq!(pt, ProjectType::Unknown);
+    }
+
+    #[test]
+    fn test_has_file_exact_case() {
+        let dir = std::env::temp_dir().join("projector_test_has_file");
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(dir.join("Cargo.toml"), "").unwrap();
+        std::fs::write(dir.join("cargo.toml"), "").unwrap();
+        assert!(has_file(&dir, "Cargo.toml").unwrap());
+        assert!(has_file(&dir, "cargo.toml").unwrap());
+        assert!(!has_file(&dir, "CARGO.TOML").unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_detect_by_extensions_tie_returns_unknown() {
+        let dir = std::env::temp_dir().join("projector_test_tie");
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(dir.join("main.rs"), "").unwrap();
+        std::fs::write(dir.join("main.go"), "").unwrap();
+        let pt = ProjectType::detect(&dir).unwrap();
+        assert_eq!(pt, ProjectType::Unknown);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_estimate_loc_iterative() {
+        let dir = std::env::temp_dir().join("projector_test_loc");
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(dir.join("a.rs"), "line1\nline2\n").unwrap();
+        std::fs::write(dir.join("b.py"), "x\n").unwrap();
+        assert_eq!(estimate_loc(&dir), 3);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

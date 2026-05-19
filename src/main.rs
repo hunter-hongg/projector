@@ -1,16 +1,11 @@
-use clap::Parser;
-use projector::command::{ConfigAction, Projector, Commands};
-use projector::global;
-use projector::subcmd;
 use anyhow::Result;
+use clap::Parser;
+use projector::command::{Commands, ConfigAction, Projector};
+use projector::subcmd;
 
 fn main() -> Result<()> {
     let cli = Projector::parse();
     match cli.command {
-        Commands::Version => {
-            println!("Projector version {}", global::version());
-            Ok(())
-        }
         Commands::List { dir } => {
             subcmd::list::subcmd_list(dir)?;
             Ok(())
