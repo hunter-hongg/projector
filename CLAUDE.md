@@ -29,10 +29,6 @@ cargo test
 - `src/config.rs` — TOML 配置读写，路径 `~/.projector/config.toml`
 - `src/color.rs` — ANSI 终端颜色辅助
 
-## 已知问题
-
-- **重复代码**: `src/subcmd/list.rs` 与 `src/analyzer.rs` 之间存在大量重复（项目类型检测、扩展名扫描）。修改其中一份需要同步更新另一份。
-
 ## 存储路径
 
 - 配置: `~/.projector/config.toml`

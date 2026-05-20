@@ -58,14 +58,11 @@ pub fn subcmd_report(diff: bool, format: Option<String>) -> Result<()> {
     println!();
     println!(
         "  {}",
-        color::info(
-            format!(
-                "Project Health Dashboard — {} — {}",
-                latest.timestamp.format("%Y-%m-%d %H:%M:%S"),
-                latest.scanned_path
-            )
-            .as_str()
-        )
+        color::info(&format!(
+            "Project Health Dashboard — {} — {}",
+            latest.timestamp.format("%Y-%m-%d %H:%M:%S"),
+            latest.scanned_path
+        ))
     );
     println!();
 

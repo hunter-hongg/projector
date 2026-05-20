@@ -18,16 +18,9 @@ fn main() -> Result<()> {
             subcmd::report::subcmd_report(diff, format)?;
             Ok(())
         }
-        Commands::Config { action } => {
-            match action {
-                Some(ConfigAction::Set { key, value }) => {
-                    subcmd::config::subcmd_config_set(key, value)?;
-                }
-                None => {
-                    subcmd::config::subcmd_config_show()?;
-                }
-            }
-            Ok(())
-        }
+        Commands::Config {
+            action: Some(ConfigAction::Set { key, value }),
+        } => subcmd::config::subcmd_config_set(key, value),
+        Commands::Config { action: None } => subcmd::config::subcmd_config_show(),
     }
 }

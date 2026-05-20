@@ -3,35 +3,21 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::analyzer::ProjectType;
+use crate::analyzer;
 use crate::color;
 
 pub fn subcmd_list(dir: Option<String>) -> Result<()> {
     let dir = dir.unwrap_or_else(|| ".".to_string());
     let dir_path = Path::new(&dir);
 
-    let mut projects = Vec::new();
-    let mut others = Vec::new();
-
-    for entry in fs::read_dir(dir_path)? {
-        let entry = entry?;
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        if path.join(".git").exists() {
-            projects.push(path);
-        } else {
-            others.push(path);
-        }
-    }
+    let (projects, others) = analyzer::classify_dirs(dir_path, false)?;
 
     println!("{}", color::info("listing directories..."));
     println!();
     println!("{}", color::green("Projects:"));
 
     for p in &projects {
-        let project_type = ProjectType::detect(p)?;
+        let project_type = analyzer::ProjectType::detect(p)?;
         let type_str = project_type.as_str();
         let display_type = if type_str == "Unknown" {
             color::red("Unknown project")

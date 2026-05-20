@@ -1,6 +1,7 @@
 use anyhow::Result;
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::path::PathBuf;
 
 use crate::config;
@@ -23,6 +24,19 @@ pub struct ScanSnapshot {
     pub timestamp: NaiveDateTime,
     pub scanned_path: String,
     pub projects: Vec<ProjectSnapshot>,
+}
+
+macro_rules! diff_field {
+    ($diffs:ident, $prev:expr, $proj:expr, $field:ident, $variant:expr) => {
+        if $prev.$field != $proj.$field {
+            $diffs.push(SnapshotDiff {
+                path: $proj.path.clone(),
+                field: $variant,
+                old_value: $prev.$field.to_string(),
+                new_value: $proj.$field.to_string(),
+            });
+        }
+    };
 }
 
 pub struct SnapshotStore;
@@ -74,43 +88,23 @@ impl SnapshotStore {
             let prev = previous.projects.iter().find(|p| p.path == proj.path);
             match prev {
                 Some(prev) => {
-                    if prev.health_score != proj.health_score {
-                        diffs.push(SnapshotDiff {
-                            path: proj.path.clone(),
-                            field: "health_score".to_string(),
-                            old_value: prev.health_score.to_string(),
-                            new_value: proj.health_score.to_string(),
-                        });
-                    }
-                    if prev.is_dirty != proj.is_dirty {
-                        diffs.push(SnapshotDiff {
-                            path: proj.path.clone(),
-                            field: "is_dirty".to_string(),
-                            old_value: prev.is_dirty.to_string(),
-                            new_value: proj.is_dirty.to_string(),
-                        });
-                    }
-                    if prev.lines_of_code != proj.lines_of_code {
-                        diffs.push(SnapshotDiff {
-                            path: proj.path.clone(),
-                            field: "lines_of_code".to_string(),
-                            old_value: prev.lines_of_code.to_string(),
-                            new_value: proj.lines_of_code.to_string(),
-                        });
-                    }
-                    if prev.unpushed_commits != proj.unpushed_commits {
-                        diffs.push(SnapshotDiff {
-                            path: proj.path.clone(),
-                            field: "unpushed_commits".to_string(),
-                            old_value: prev.unpushed_commits.to_string(),
-                            new_value: proj.unpushed_commits.to_string(),
-                        });
-                    }
+                    diff_field!(diffs, prev, proj, health_score, DiffField::HealthScore);
+                    diff_field!(diffs, prev, proj, is_dirty, DiffField::IsDirty);
+                    diff_field!(diffs, prev, proj, lines_of_code, DiffField::LinesOfCode);
+                    diff_field!(
+                        diffs,
+                        prev,
+                        proj,
+                        unpushed_commits,
+                        DiffField::UnpushedCommits
+                    );
+                    diff_field!(diffs, prev, proj, git_branch, DiffField::GitBranch);
+                    diff_field!(diffs, prev, proj, project_type, DiffField::ProjectType);
                 }
                 None => {
                     diffs.push(SnapshotDiff {
                         path: proj.path.clone(),
-                        field: "project".to_string(),
+                        field: DiffField::Project,
                         old_value: String::new(),
                         new_value: "new".to_string(),
                     });
@@ -121,7 +115,7 @@ impl SnapshotStore {
             if !latest.projects.iter().any(|p| p.path == prev.path) {
                 diffs.push(SnapshotDiff {
                     path: prev.path.clone(),
-                    field: "project".to_string(),
+                    field: DiffField::Project,
                     old_value: "removed".to_string(),
                     new_value: String::new(),
                 });
@@ -131,9 +125,34 @@ impl SnapshotStore {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum DiffField {
+    HealthScore,
+    IsDirty,
+    LinesOfCode,
+    UnpushedCommits,
+    GitBranch,
+    ProjectType,
+    Project,
+}
+
+impl fmt::Display for DiffField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DiffField::HealthScore => write!(f, "health_score"),
+            DiffField::IsDirty => write!(f, "is_dirty"),
+            DiffField::LinesOfCode => write!(f, "lines_of_code"),
+            DiffField::UnpushedCommits => write!(f, "unpushed_commits"),
+            DiffField::GitBranch => write!(f, "git_branch"),
+            DiffField::ProjectType => write!(f, "project_type"),
+            DiffField::Project => write!(f, "project"),
+        }
+    }
+}
+
 pub struct SnapshotDiff {
     pub path: String,
-    pub field: String,
+    pub field: DiffField,
     pub old_value: String,
     pub new_value: String,
 }
@@ -179,7 +198,7 @@ mod tests {
         let prev = make_scan(vec![]);
         let diffs = SnapshotStore::diff(&latest, &prev);
         assert_eq!(diffs.len(), 1);
-        assert_eq!(diffs[0].field, "project");
+        assert_eq!(diffs[0].field, DiffField::Project);
         assert_eq!(diffs[0].new_value, "new");
         assert!(diffs[0].old_value.is_empty());
     }
@@ -191,7 +210,7 @@ mod tests {
         let prev = make_scan(vec![a]);
         let diffs = SnapshotStore::diff(&latest, &prev);
         assert_eq!(diffs.len(), 1);
-        assert_eq!(diffs[0].field, "project");
+        assert_eq!(diffs[0].field, DiffField::Project);
         assert_eq!(diffs[0].old_value, "removed");
         assert!(diffs[0].new_value.is_empty());
     }
@@ -204,7 +223,7 @@ mod tests {
         let prev = make_scan(vec![a_old]);
         let diffs = SnapshotStore::diff(&latest, &prev);
         assert_eq!(diffs.len(), 1);
-        assert_eq!(diffs[0].field, "health_score");
+        assert_eq!(diffs[0].field, DiffField::HealthScore);
         assert_eq!(diffs[0].old_value, "80");
         assert_eq!(diffs[0].new_value, "100");
     }
@@ -217,8 +236,8 @@ mod tests {
         let prev = make_scan(vec![a_old]);
         let diffs = SnapshotStore::diff(&latest, &prev);
         assert_eq!(diffs.len(), 2);
-        assert!(diffs.iter().any(|d| d.field == "is_dirty"));
-        assert!(diffs.iter().any(|d| d.field == "health_score"));
+        assert!(diffs.iter().any(|d| d.field == DiffField::IsDirty));
+        assert!(diffs.iter().any(|d| d.field == DiffField::HealthScore));
     }
 
     #[test]
@@ -229,7 +248,7 @@ mod tests {
         let prev = make_scan(vec![a_old]);
         let diffs = SnapshotStore::diff(&latest, &prev);
         assert_eq!(diffs.len(), 1);
-        assert_eq!(diffs[0].field, "lines_of_code");
+        assert_eq!(diffs[0].field, DiffField::LinesOfCode);
     }
 
     #[test]

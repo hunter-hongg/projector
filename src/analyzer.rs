@@ -37,24 +37,45 @@ impl ProjectType {
     }
 
     pub fn detect(dir: &Path) -> Result<Self> {
-        if has_file(dir, "Cargo.toml")? {
-            Ok(ProjectType::Rust)
-        } else if has_file(dir, "package.json")? {
-            Ok(ProjectType::JavaScript)
-        } else if has_file(dir, "go.mod")? {
-            Ok(ProjectType::Go)
-        } else if has_file(dir, "requirements.txt")?
-            || has_file(dir, "setup.py")?
-            || has_file(dir, "pyproject.toml")?
+        let filenames = read_filenames(dir)?;
+
+        if filenames
+            .iter()
+            .any(|f| f.eq_ignore_ascii_case("Cargo.toml"))
         {
+            Ok(ProjectType::Rust)
+        } else if filenames
+            .iter()
+            .any(|f| f.eq_ignore_ascii_case("package.json"))
+        {
+            Ok(ProjectType::JavaScript)
+        } else if filenames.iter().any(|f| f.eq_ignore_ascii_case("go.mod")) {
+            Ok(ProjectType::Go)
+        } else if filenames.iter().any(|f| {
+            f.eq_ignore_ascii_case("requirements.txt")
+                || f.eq_ignore_ascii_case("setup.py")
+                || f.eq_ignore_ascii_case("pyproject.toml")
+        }) {
             Ok(ProjectType::Python)
-        } else if has_file(dir, "build.gradle")? || has_file(dir, "pom.xml")? {
+        } else if filenames
+            .iter()
+            .any(|f| f.eq_ignore_ascii_case("build.gradle") || f.eq_ignore_ascii_case("pom.xml"))
+        {
             Ok(ProjectType::JavaKotlin)
-        } else if has_file(dir, "CMakeLists.txt")? {
+        } else if filenames
+            .iter()
+            .any(|f| f.eq_ignore_ascii_case("CMakeLists.txt"))
+        {
             Ok(ProjectType::Cpp)
-        } else if has_file(dir, "dune-project")? {
+        } else if filenames
+            .iter()
+            .any(|f| f.eq_ignore_ascii_case("dune-project"))
+        {
             Ok(ProjectType::OCaml)
-        } else if has_file(dir, "pubspec.yaml")? {
+        } else if filenames
+            .iter()
+            .any(|f| f.eq_ignore_ascii_case("pubspec.yaml"))
+        {
             Ok(ProjectType::Dart)
         } else {
             Ok(detect_by_extensions(dir))
@@ -113,33 +134,73 @@ fn detect_by_extensions(dir: &Path) -> ProjectType {
 }
 
 fn scan_dir_for_extensions(dir: &Path, counts: &mut HashMap<String, u32>) {
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if name.starts_with('.') || name == "node_modules" || name == "target" {
-                    continue;
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        if let Ok(entries) = fs::read_dir(&current) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if name.starts_with('.') || name == "node_modules" || name == "target" {
+                        continue;
+                    }
+                    stack.push(path);
+                } else if path.is_file()
+                    && let Some(ext) = path.extension().and_then(|e| e.to_str())
+                {
+                    *counts.entry(ext.to_string()).or_insert(0) += 1;
                 }
-                scan_dir_for_extensions(&path, counts);
-            } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                *counts.entry(ext.to_string()).or_insert(0) += 1;
             }
         }
     }
 }
 
-fn has_file(dir: &Path, file: &str) -> Result<bool> {
+fn read_filenames(dir: &Path) -> Result<Vec<String>> {
     if !dir.is_dir() {
-        return Ok(false);
+        return Ok(Vec::new());
     }
+    let entries = fs::read_dir(dir)?;
+    let names = entries
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
+        .collect();
+    Ok(names)
+}
+
+/// 轻量检查：目录是否包含 `.git` 子目录
+pub fn is_git_repo(path: &Path) -> bool {
+    path.join(".git").exists()
+}
+
+/// 遍历 `dir` 的子目录，按是否为 git 项目分类。
+/// `skip_hidden=true` 时跳过以 `.` 开头的目录。
+pub fn classify_dirs(
+    dir: &Path,
+    skip_hidden: bool,
+) -> Result<(Vec<std::path::PathBuf>, Vec<std::path::PathBuf>)> {
+    let mut projects = Vec::new();
+    let mut others = Vec::new();
+
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
-        if entry.file_name() == file {
-            return Ok(true);
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        if skip_hidden {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name.starts_with('.') {
+                continue;
+            }
+        }
+        if is_git_repo(&path) {
+            projects.push(path);
+        } else {
+            others.push(path);
         }
     }
-    Ok(false)
+
+    Ok((projects, others))
 }
 
 pub struct GitHealth {
@@ -414,14 +475,14 @@ mod tests {
     }
 
     #[test]
-    fn test_has_file_exact_case() {
-        let dir = std::env::temp_dir().join("projector_test_has_file");
+    fn test_read_filenames() {
+        let dir = std::env::temp_dir().join("projector_test_read_filenames");
         let _ = std::fs::create_dir_all(&dir);
         std::fs::write(dir.join("Cargo.toml"), "").unwrap();
-        std::fs::write(dir.join("cargo.toml"), "").unwrap();
-        assert!(has_file(&dir, "Cargo.toml").unwrap());
-        assert!(has_file(&dir, "cargo.toml").unwrap());
-        assert!(!has_file(&dir, "CARGO.TOML").unwrap());
+        std::fs::write(dir.join("main.rs"), "").unwrap();
+        let names = read_filenames(&dir).unwrap();
+        assert!(names.contains(&"Cargo.toml".to_string()));
+        assert!(names.contains(&"main.rs".to_string()));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
