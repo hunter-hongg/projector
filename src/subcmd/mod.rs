@@ -1,4 +1,10 @@
+pub mod completion;
 pub mod config;
+pub mod export;
+pub mod inspect;
 pub mod list;
 pub mod report;
 pub mod scan;
+pub mod snapshot;
+pub mod stats;
+pub mod trend;

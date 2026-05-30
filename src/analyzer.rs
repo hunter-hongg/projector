@@ -404,6 +404,458 @@ pub fn analyze_project(dir: &Path, stale_threshold_days: u32) -> Result<Option<P
     }))
 }
 
+pub struct CommitStats {
+    pub total: u32,
+    pub last_30_days: u32,
+    pub last_90_days: u32,
+    pub last_year: u32,
+    pub authors: u32,
+}
+
+pub fn count_commits(dir: &Path) -> Result<Option<CommitStats>> {
+    let repo = match Repository::open(dir) {
+        Ok(r) => r,
+        Err(_) => return Ok(None),
+    };
+
+    let mut total = 0u32;
+    let mut last_30 = 0u32;
+    let mut last_90 = 0u32;
+    let mut last_year = 0u32;
+    let mut authors = std::collections::HashSet::new();
+
+    let now = Utc::now().naive_utc();
+
+    let mut revwalk = match repo.revwalk() {
+        Ok(w) => w,
+        Err(_) => {
+            return Ok(Some(CommitStats {
+                total: 0,
+                last_30_days: 0,
+                last_90_days: 0,
+                last_year: 0,
+                authors: 0,
+            }));
+        }
+    };
+
+    if revwalk.push_head().is_err() {
+        return Ok(Some(CommitStats {
+            total: 0,
+            last_30_days: 0,
+            last_90_days: 0,
+            last_year: 0,
+            authors: 0,
+        }));
+    }
+
+    let _ = revwalk.set_sorting(git2::Sort::TIME);
+
+    for oid in revwalk.flatten() {
+        if let Ok(commit) = repo.find_commit(oid) {
+            total += 1;
+            if let Some(sig) = commit.author().name() {
+                authors.insert(sig.to_string());
+            }
+            let secs = commit.time().seconds();
+            if let Some(dt) = Utc.timestamp_opt(secs, 0).single() {
+                let days = (now - dt.naive_utc()).num_days();
+                if days <= 30 {
+                    last_30 += 1;
+                }
+                if days <= 90 {
+                    last_90 += 1;
+                }
+                if days <= 365 {
+                    last_year += 1;
+                }
+            }
+        }
+    }
+
+    Ok(Some(CommitStats {
+        total,
+        last_30_days: last_30,
+        last_90_days: last_90,
+        last_year,
+        authors: authors.len() as u32,
+    }))
+}
+
+pub struct FileTypeDistribution {
+    pub groups: Vec<(String, u32, u32)>,
+}
+
+pub fn file_type_distribution(dir: &Path) -> FileTypeDistribution {
+    let mut ext_counts: HashMap<String, u32> = HashMap::new();
+    scan_dir_for_extensions(dir, &mut ext_counts);
+
+    let total_files: u32 = ext_counts.values().sum();
+
+    let type_groups: Vec<(&str, Vec<&str>)> = vec![
+        ("Rust", vec!["rs"]),
+        ("JavaScript/TypeScript", vec!["js", "ts", "jsx", "tsx"]),
+        ("Go", vec!["go"]),
+        ("Python", vec!["py"]),
+        ("Java/Kotlin", vec!["java", "kt", "kts"]),
+        ("C/C++", vec!["c", "h", "cpp", "hpp", "cc", "cxx"]),
+        ("OCaml", vec!["ml", "mli"]),
+        ("Dart", vec!["dart"]),
+        ("Data/Config", vec!["json", "yaml", "yml", "toml"]),
+        ("Markdown", vec!["md"]),
+        ("Web", vec!["css", "html"]),
+        ("Other", vec![]),
+    ];
+
+    let mut groups: Vec<(String, u32, u32)> = Vec::new();
+    let mut accounted: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for (group_name, exts) in &type_groups {
+        if exts.is_empty() {
+            continue;
+        }
+        let mut count = 0u32;
+        for ext in exts {
+            if let Some(&c) = ext_counts.get(*ext) {
+                count += c;
+                accounted.insert(ext.to_string());
+            }
+        }
+        if count > 0 {
+            let pct = if total_files > 0 {
+                (count as f64 / total_files as f64 * 100.0).round() as u32
+            } else {
+                0
+            };
+            groups.push((group_name.to_string(), count, pct));
+        }
+    }
+
+    let other_count: u32 = ext_counts
+        .iter()
+        .filter(|(k, _)| !accounted.contains(*k))
+        .map(|(_, v)| v)
+        .sum();
+    if other_count > 0 {
+        let pct = if total_files > 0 {
+            (other_count as f64 / total_files as f64 * 100.0).round() as u32
+        } else {
+            0
+        };
+        groups.push(("Other".to_string(), other_count, pct));
+    }
+
+    groups.sort_by_key(|g| std::cmp::Reverse(g.1));
+
+    FileTypeDistribution { groups }
+}
+
+pub struct GitExtraHealth {
+    pub stash_count: u32,
+    pub untracked_files: u32,
+    pub behind_upstream: u32,
+}
+
+pub fn git_extra_health(dir: &Path) -> Result<Option<GitExtraHealth>> {
+    let mut repo = match Repository::open(dir) {
+        Ok(r) => r,
+        Err(_) => return Ok(None),
+    };
+
+    let stash_count = {
+        let mut count = 0u32;
+        let _ = repo.stash_foreach(|_, _, _| {
+            count += 1;
+            true
+        });
+        count
+    };
+
+    let (untracked_files, behind_upstream) = {
+        let statuses = repo.statuses(Some(
+            git2::StatusOptions::new()
+                .include_untracked(true)
+                .recurse_untracked_dirs(true),
+        ))?;
+
+        let untracked = statuses
+            .iter()
+            .filter(|s| s.status() == git2::Status::WT_NEW)
+            .count() as u32;
+
+        let behind = if let Ok(head) = repo.head() {
+            if let Some(name) = head.shorthand() {
+                let upstream_name = format!("refs/remotes/origin/{}", name);
+                if let Ok(upstream) = repo.find_reference(&upstream_name) {
+                    if let (Ok(local), Ok(remote)) =
+                        (head.peel_to_commit(), upstream.peel_to_commit())
+                    {
+                        if let Ok(merge_base) = repo.merge_base(local.id(), remote.id()) {
+                            let mut revwalk = repo.revwalk().ok();
+                            if let Some(ref mut w) = revwalk {
+                                let _ = w.push(remote.id());
+                                let _ = w.hide(merge_base);
+                                w.count() as u32
+                            } else {
+                                0
+                            }
+                        } else {
+                            0
+                        }
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                }
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+
+        (untracked, behind)
+    };
+
+    Ok(Some(GitExtraHealth {
+        stash_count,
+        untracked_files,
+        behind_upstream,
+    }))
+}
+
+pub struct ProjectStats {
+    pub total_projects: usize,
+    pub type_distribution: Vec<(String, usize, f64)>,
+    pub avg_health: f64,
+    pub median_health: f64,
+    pub std_dev_health: f64,
+    pub health_buckets: (usize, usize, usize),
+    pub top5: Vec<ProjectSnapshot>,
+    pub bottom5: Vec<ProjectSnapshot>,
+    pub total_loc: u32,
+    pub dirty_ratio: f64,
+    pub stale_ratio: f64,
+}
+
+pub fn compute_stats(
+    snapshot: &crate::snapshot::ScanSnapshot,
+    stale_threshold_days: u32,
+) -> ProjectStats {
+    use chrono::Utc;
+
+    let now = Utc::now().naive_utc();
+    let total = snapshot.projects.len();
+
+    let mut type_map: HashMap<String, usize> = HashMap::new();
+    for p in &snapshot.projects {
+        *type_map.entry(p.project_type.clone()).or_insert(0) += 1;
+    }
+    let type_distribution: Vec<(String, usize, f64)> = type_map
+        .into_iter()
+        .map(|(k, v)| {
+            let pct = if total > 0 {
+                (v as f64 / total as f64) * 100.0
+            } else {
+                0.0
+            };
+            (k, v, pct)
+        })
+        .collect();
+
+    let mut sorted: Vec<&ProjectSnapshot> = snapshot.projects.iter().collect();
+    sorted.sort_by_key(|p| p.health_score);
+
+    let avg_health = if total > 0 {
+        sorted.iter().map(|p| p.health_score as f64).sum::<f64>() / total as f64
+    } else {
+        0.0
+    };
+
+    let median_health = if total > 0 {
+        let mid = total / 2;
+        if total.is_multiple_of(2) {
+            (sorted[mid - 1].health_score as f64 + sorted[mid].health_score as f64) / 2.0
+        } else {
+            sorted[mid].health_score as f64
+        }
+    } else {
+        0.0
+    };
+
+    let std_dev_health = if total > 1 {
+        let variance = sorted
+            .iter()
+            .map(|p| {
+                let diff = p.health_score as f64 - avg_health;
+                diff * diff
+            })
+            .sum::<f64>()
+            / (total - 1) as f64;
+        variance.sqrt()
+    } else {
+        0.0
+    };
+
+    let high = sorted.iter().filter(|p| p.health_score >= 80).count();
+    let mid = sorted
+        .iter()
+        .filter(|p| p.health_score >= 50 && p.health_score < 80)
+        .count();
+    let low = sorted.iter().filter(|p| p.health_score < 50).count();
+
+    let top5: Vec<ProjectSnapshot> = sorted.iter().rev().take(5).map(|p| (*p).clone()).collect();
+    let bottom5: Vec<ProjectSnapshot> = sorted.iter().take(5).map(|p| (*p).clone()).collect();
+
+    let total_loc: u32 = snapshot.projects.iter().map(|p| p.lines_of_code).sum();
+    let dirty_count = snapshot.projects.iter().filter(|p| p.is_dirty).count();
+    let dirty_ratio = if total > 0 {
+        dirty_count as f64 / total as f64
+    } else {
+        0.0
+    };
+
+    let stale_count = snapshot
+        .projects
+        .iter()
+        .filter(|p| {
+            let days = (now - p.last_commit_date).num_days();
+            days >= stale_threshold_days as i64
+        })
+        .count();
+    let stale_ratio = if total > 0 {
+        stale_count as f64 / total as f64
+    } else {
+        0.0
+    };
+
+    ProjectStats {
+        total_projects: total,
+        type_distribution,
+        avg_health,
+        median_health,
+        std_dev_health,
+        health_buckets: (high, mid, low),
+        top5,
+        bottom5,
+        total_loc,
+        dirty_ratio,
+        stale_ratio,
+    }
+}
+
+pub struct TrendPoint {
+    pub date: String,
+    pub value: f64,
+}
+
+pub fn draw_ascii_chart(
+    points: &[TrendPoint],
+    width: usize,
+    height: usize,
+) -> Vec<String> {
+    if points.is_empty() {
+        return vec!["(no data)".to_string()];
+    }
+
+    let min_val = points.iter().map(|p| p.value).fold(f64::INFINITY, f64::min);
+    let max_val = points.iter().map(|p| p.value).fold(f64::NEG_INFINITY, f64::max);
+
+    if (max_val - min_val).abs() < f64::EPSILON {
+        return vec![format!("all values = {:.1}", min_val)];
+    }
+
+    let plot_width = width.saturating_sub(8).max(2);
+    let plot_height = height.saturating_sub(2).max(2);
+
+    let mut lines = Vec::new();
+
+    for row in 0..plot_height {
+        let ratio = 1.0 - (row as f64 / (plot_height - 1) as f64);
+        let val = min_val + ratio * (max_val - min_val);
+
+        let label = if val == min_val || (val - max_val).abs() < (max_val - min_val) * 0.05 {
+            format!("{:.0}", val)
+        } else {
+            String::new()
+        };
+
+        let padded_label = if row % 2 == 0 || !label.is_empty() {
+            format!("{:>6} ", label)
+        } else {
+            "       ".to_string()
+        };
+
+        let mut row_chars = String::with_capacity(plot_width);
+        for col in 0..plot_width {
+            let point_idx = (col as f64 / (plot_width - 1) as f64 * (points.len() - 1) as f64)
+                .round() as usize;
+            let point_val = points[point_idx].value;
+            let point_ratio = (point_val - min_val) / (max_val - min_val);
+
+            let y_pos = (plot_height - 1) as f64 * (1.0 - point_ratio);
+            let distance = (row as f64 - y_pos).abs();
+
+            if distance < 0.5 {
+                row_chars.push('●');
+            } else if col > 0 {
+                let prev_idx = ((col - 1) as f64 / (plot_width - 1) as f64
+                    * (points.len() - 1) as f64)
+                    .round() as usize;
+                let prev_y = (plot_height - 1) as f64
+                    * (1.0 - (points[prev_idx].value - min_val) / (max_val - min_val));
+                let row_f = row as f64;
+                if (row_f > prev_y && row_f < y_pos)
+                    || (row_f < prev_y && row_f > y_pos)
+                {
+                    row_chars.push('│');
+                } else {
+                    row_chars.push(' ');
+                }
+            } else {
+                row_chars.push(' ');
+            }
+        }
+
+        lines.push(format!("{}{}", padded_label, row_chars));
+    }
+
+    let x_axis = format!("       {}", "─".repeat(plot_width));
+    lines.push(x_axis);
+
+    let x_labels = self::format_x_axis_labels(points, plot_width);
+    lines.push(format!("       {}", x_labels));
+
+    lines
+}
+
+fn format_x_axis_labels(points: &[TrendPoint], width: usize) -> String {
+    if points.is_empty() {
+        return String::new();
+    }
+    let mut labels = vec![" ".to_string(); width];
+    if let Some(first) = points.first() {
+        let d = &first.date;
+        for (i, c) in d.chars().enumerate() {
+            if i < width {
+                labels[i] = c.to_string();
+            }
+        }
+    }
+    if let Some(last) = points.last() {
+        let d = &last.date;
+        let start = width.saturating_sub(d.len());
+        for (i, c) in d.chars().enumerate() {
+            let pos = start + i;
+            if pos < width {
+                labels[pos] = c.to_string();
+            }
+        }
+    }
+    labels.concat()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -505,5 +957,126 @@ mod tests {
         std::fs::write(dir.join("b.py"), "x\n").unwrap();
         assert_eq!(estimate_loc(&dir), 3);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_file_type_distribution_empty_dir() {
+        let dir = std::env::temp_dir().join("projector_test_ftd_empty");
+        let _ = std::fs::create_dir_all(&dir);
+        let ftd = file_type_distribution(&dir);
+        assert!(ftd.groups.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_file_type_distribution_with_files() {
+        let dir = std::env::temp_dir().join("projector_test_ftd");
+        let _ = std::fs::create_dir_all(&dir);
+        std::fs::write(dir.join("main.rs"), "").unwrap();
+        std::fs::write(dir.join("lib.rs"), "").unwrap();
+        std::fs::write(dir.join("style.css"), "").unwrap();
+        let ftd = file_type_distribution(&dir);
+        assert!(!ftd.groups.is_empty());
+        let rust_count = ftd
+            .groups
+            .iter()
+            .find(|(name, _, _)| name == "Rust")
+            .map(|(_, count, _)| *count)
+            .unwrap_or(0);
+        assert_eq!(rust_count, 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_compute_stats_empty() {
+        let snapshot = crate::snapshot::ScanSnapshot {
+            timestamp: Utc::now().naive_utc(),
+            scanned_path: ".".to_string(),
+            projects: vec![],
+        };
+        let stats = compute_stats(&snapshot, 90);
+        assert_eq!(stats.total_projects, 0);
+        assert_eq!(stats.avg_health, 0.0);
+        assert_eq!(stats.median_health, 0.0);
+        assert_eq!(stats.std_dev_health, 0.0);
+        assert_eq!(stats.total_loc, 0);
+    }
+
+    #[test]
+    fn test_compute_stats_single_project() {
+        let now = Utc::now().naive_utc();
+        let p = ProjectSnapshot {
+            path: "/test".to_string(),
+            project_type: "Rust".to_string(),
+            git_branch: "main".to_string(),
+            is_dirty: false,
+            unpushed_commits: 0,
+            last_commit_date: now,
+            last_modified_date: now,
+            lines_of_code: 500,
+            health_score: 85,
+        };
+        let snapshot = crate::snapshot::ScanSnapshot {
+            timestamp: now,
+            scanned_path: ".".to_string(),
+            projects: vec![p],
+        };
+        let stats = compute_stats(&snapshot, 90);
+        assert_eq!(stats.total_projects, 1);
+        assert!((stats.avg_health - 85.0).abs() < 0.001);
+        assert!((stats.median_health - 85.0).abs() < 0.001);
+        assert!((stats.std_dev_health - 0.0).abs() < 0.001);
+        assert_eq!(stats.total_loc, 500);
+    }
+
+    #[test]
+    fn test_compute_stats_multiple_projects() {
+        let now = Utc::now().naive_utc();
+        let projects = vec![
+            ProjectSnapshot {
+                path: "/a".to_string(),
+                project_type: "Rust".to_string(),
+                git_branch: "main".to_string(),
+                is_dirty: false,
+                unpushed_commits: 0,
+                last_commit_date: now,
+                last_modified_date: now,
+                lines_of_code: 100,
+                health_score: 100,
+            },
+            ProjectSnapshot {
+                path: "/b".to_string(),
+                project_type: "Python".to_string(),
+                git_branch: "main".to_string(),
+                is_dirty: true,
+                unpushed_commits: 0,
+                last_commit_date: now,
+                last_modified_date: now,
+                lines_of_code: 200,
+                health_score: 80,
+            },
+            ProjectSnapshot {
+                path: "/c".to_string(),
+                project_type: "Rust".to_string(),
+                git_branch: "main".to_string(),
+                is_dirty: false,
+                unpushed_commits: 0,
+                last_commit_date: now,
+                last_modified_date: now,
+                lines_of_code: 300,
+                health_score: 60,
+            },
+        ];
+        let snapshot = crate::snapshot::ScanSnapshot {
+            timestamp: now,
+            scanned_path: ".".to_string(),
+            projects,
+        };
+        let stats = compute_stats(&snapshot, 90);
+        assert_eq!(stats.total_projects, 3);
+        assert!((stats.avg_health - 80.0).abs() < 0.001);
+        assert!((stats.median_health - 80.0).abs() < 0.001);
+        assert_eq!(stats.total_loc, 600);
+        assert!((stats.dirty_ratio - 1.0 / 3.0).abs() < 0.001);
     }
 }

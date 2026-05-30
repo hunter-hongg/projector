@@ -12,6 +12,14 @@ pub fn subcmd_config_show() -> Result<()> {
         "  report.stale_threshold_days = {}",
         config.report.stale_threshold_days
     );
+    println!(
+        "  snapshot.keep_count = {}",
+        config.snapshot.keep_count
+    );
+    println!(
+        "  alert.health_threshold = {}",
+        config.alert.health_threshold
+    );
     println!();
     println!("Config file: {}", Config::path().display());
     Ok(())

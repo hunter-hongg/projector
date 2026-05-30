@@ -57,21 +57,27 @@ impl SnapshotStore {
     }
 
     fn load_by_index(skip: usize) -> Result<Option<ScanSnapshot>> {
-        let dir = Self::snapshots_dir();
-        if !dir.exists() {
-            return Ok(None);
-        }
-        let mut entries: Vec<_> = std::fs::read_dir(&dir)?
-            .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
-            .collect();
-        entries.sort_by_key(|e| e.path());
+        let entries = Self::sorted_snapshot_files()?;
         if entries.len() <= skip {
             return Ok(None);
         }
         let idx = entries.len() - 1 - skip;
-        let content = std::fs::read_to_string(entries[idx].path())?;
+        let content = std::fs::read_to_string(&entries[idx])?;
         Ok(Some(serde_json::from_str(&content)?))
+    }
+
+    fn sorted_snapshot_files() -> Result<Vec<PathBuf>> {
+        let dir = Self::snapshots_dir();
+        if !dir.exists() {
+            return Ok(Vec::new());
+        }
+        let mut entries: Vec<_> = std::fs::read_dir(&dir)?
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
+            .map(|e| e.path())
+            .collect();
+        entries.sort();
+        Ok(entries)
     }
 
     pub fn load_latest() -> Result<Option<ScanSnapshot>> {
@@ -80,6 +86,35 @@ impl SnapshotStore {
 
     pub fn load_second_latest() -> Result<Option<ScanSnapshot>> {
         Self::load_by_index(1)
+    }
+
+    pub fn load_all() -> Result<Vec<ScanSnapshot>> {
+        let entries = Self::sorted_snapshot_files()?;
+        let mut snapshots = Vec::with_capacity(entries.len());
+        for path in entries {
+            let content = std::fs::read_to_string(&path)?;
+            match serde_json::from_str(&content) {
+                Ok(s) => snapshots.push(s),
+                Err(e) => {
+                    eprintln!("Warning: corrupt snapshot file '{}': {}", path.display(), e);
+                }
+            }
+        }
+        Ok(snapshots)
+    }
+
+    pub fn prune(keep: u32, dry_run: bool) -> Result<Vec<PathBuf>> {
+        let entries = Self::sorted_snapshot_files()?;
+        if keep as usize >= entries.len() {
+            return Ok(Vec::new());
+        }
+        let to_remove: Vec<_> = entries.iter().take(entries.len() - keep as usize).cloned().collect();
+        if !dry_run {
+            for path in &to_remove {
+                std::fs::remove_file(path)?;
+            }
+        }
+        Ok(to_remove)
     }
 
     pub fn diff(latest: &ScanSnapshot, previous: &ScanSnapshot) -> Vec<SnapshotDiff> {
@@ -155,6 +190,32 @@ pub struct SnapshotDiff {
     pub field: DiffField,
     pub old_value: String,
     pub new_value: String,
+}
+
+pub fn format_health_deductions(
+    is_dirty: bool,
+    last_commit_date: NaiveDateTime,
+    lines_of_code: u32,
+    stale_threshold_days: u32,
+) -> Vec<String> {
+    use chrono::Utc;
+    let now = Utc::now().naive_utc();
+    let mut reasons = Vec::new();
+
+    let days_since_commit = (now - last_commit_date).num_days();
+    if days_since_commit >= stale_threshold_days as i64 {
+        reasons.push(format!("stale({}d)", days_since_commit));
+    }
+
+    if is_dirty {
+        reasons.push("dirty".to_string());
+    }
+
+    if lines_of_code < 100 {
+        reasons.push("loc<100".to_string());
+    }
+
+    reasons
 }
 
 #[cfg(test)]
@@ -269,7 +330,20 @@ mod tests {
         let new_b = make_project("proj_b", 85, false, 200, 3);
         let latest = make_scan(vec![new_b, c]);
         let diffs = SnapshotStore::diff(&latest, &prev);
-        // removed a (1) + b health_score + b is_dirty (2) + new c (1) = 4
         assert_eq!(diffs.len(), 4);
+    }
+
+    #[test]
+    fn test_format_health_deductions_clean() {
+        let now = Utc::now().naive_utc();
+        let reasons = format_health_deductions(false, now, 500, 90);
+        assert!(reasons.is_empty());
+    }
+
+    #[test]
+    fn test_format_health_deductions_dirty() {
+        let now = Utc::now().naive_utc();
+        let reasons = format_health_deductions(true, now, 500, 90);
+        assert!(reasons.contains(&"dirty".to_string()));
     }
 }

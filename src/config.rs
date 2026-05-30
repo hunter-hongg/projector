@@ -6,6 +6,10 @@ use std::path::PathBuf;
 pub struct Config {
     pub scan: ScanConfig,
     pub report: ReportConfig,
+    #[serde(default)]
+    pub snapshot: SnapshotConfig,
+    #[serde(default)]
+    pub alert: AlertConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,6 +22,30 @@ pub struct ReportConfig {
     pub stale_threshold_days: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotConfig {
+    pub keep_count: u32,
+}
+
+impl Default for SnapshotConfig {
+    fn default() -> Self {
+        Self { keep_count: 30 }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AlertConfig {
+    pub health_threshold: u32,
+}
+
+impl Default for AlertConfig {
+    fn default() -> Self {
+        Self {
+            health_threshold: 40,
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -26,6 +54,10 @@ impl Default for Config {
             },
             report: ReportConfig {
                 stale_threshold_days: 90,
+            },
+            snapshot: SnapshotConfig { keep_count: 30 },
+            alert: AlertConfig {
+                health_threshold: 40,
             },
         }
     }
@@ -71,6 +103,16 @@ impl Config {
                     .parse()
                     .map_err(|_| anyhow::anyhow!("stale_threshold_days must be a number"))?
             }
+            "snapshot.keep_count" => {
+                self.snapshot.keep_count = value
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("keep_count must be a number"))?
+            }
+            "alert.health_threshold" => {
+                self.alert.health_threshold = value
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("health_threshold must be a number"))?
+            }
             _ => anyhow::bail!("Unknown config key: {}", key),
         }
         Ok(())
@@ -90,6 +132,8 @@ mod tests {
         let config = Config::default();
         assert_eq!(config.scan.default_path, ".");
         assert_eq!(config.report.stale_threshold_days, 90);
+        assert_eq!(config.snapshot.keep_count, 30);
+        assert_eq!(config.alert.health_threshold, 40);
     }
 
     #[test]
@@ -104,6 +148,20 @@ mod tests {
         let mut config = Config::default();
         config.set("report.stale_threshold_days", "30").unwrap();
         assert_eq!(config.report.stale_threshold_days, 30);
+    }
+
+    #[test]
+    fn test_config_set_keep_count() {
+        let mut config = Config::default();
+        config.set("snapshot.keep_count", "50").unwrap();
+        assert_eq!(config.snapshot.keep_count, 50);
+    }
+
+    #[test]
+    fn test_config_set_health_threshold() {
+        let mut config = Config::default();
+        config.set("alert.health_threshold", "20").unwrap();
+        assert_eq!(config.alert.health_threshold, 20);
     }
 
     #[test]
