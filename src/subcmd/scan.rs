@@ -51,10 +51,10 @@ pub fn subcmd_scan(dir: Option<String>) -> Result<()> {
             println!();
             println!(
                 "  {}",
-                color::yellow(&format!(
-                    "以下项目健康分低于 {}：",
-                    alert_threshold
-                ))
+            color::yellow(&format!(
+                "Projects with health score below {}: ",
+                alert_threshold
+            ))
             );
             for p in &low_health {
                 let name = p.path.split('/').next_back().unwrap_or(&p.path);

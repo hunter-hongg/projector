@@ -198,21 +198,6 @@ fn apply_sort(
         (sort_spec, false)
     };
 
-    let cmp = |a: &ProjectSnapshot, b: &ProjectSnapshot| -> std::cmp::Ordering {
-        match field {
-            "name" => a.path.cmp(&b.path),
-            "type" => a.project_type.cmp(&b.project_type),
-            "health" => a.health_score.cmp(&b.health_score),
-            "loc" => a.lines_of_code.cmp(&b.lines_of_code),
-            "lines_of_code" => a.lines_of_code.cmp(&b.lines_of_code),
-            "branch" => a.git_branch.cmp(&b.git_branch),
-            "last_commit" => a.last_commit_date.cmp(&b.last_commit_date),
-            _ => {
-                a.health_score.cmp(&b.health_score)
-            }
-        }
-    };
-
     let valid_fields = ["name", "type", "health", "loc", "branch", "last_commit"];
     if !valid_fields.contains(&field) {
         anyhow::bail!(
@@ -221,6 +206,18 @@ fn apply_sort(
             valid_fields.join(", ")
         );
     }
+
+    let cmp = |a: &ProjectSnapshot, b: &ProjectSnapshot| -> std::cmp::Ordering {
+        match field {
+            "name" => a.path.cmp(&b.path),
+            "type" => a.project_type.cmp(&b.project_type),
+            "health" => a.health_score.cmp(&b.health_score),
+            "loc" | "lines_of_code" => a.lines_of_code.cmp(&b.lines_of_code),
+            "branch" => a.git_branch.cmp(&b.git_branch),
+            "last_commit" => a.last_commit_date.cmp(&b.last_commit_date),
+            _ => std::cmp::Ordering::Equal,
+        }
+    };
 
     if descending {
         projects.sort_by(|a, b| cmp(b, a));
@@ -239,6 +236,8 @@ fn apply_filters(
     use chrono::Utc;
     let now = Utc::now().naive_utc();
 
+    let tags_index = crate::tags::TagsIndex::load()?;
+
     let mut filtered = projects;
 
     for filter in filters {
@@ -252,6 +251,7 @@ fn apply_filters(
             "dirty",
             "branch",
             "last_commit",
+            "tag",
         ];
         let valid_ops = ["eq", "gte", "lte", "gt", "lt"];
 
@@ -283,6 +283,13 @@ fn apply_filters(
                             .num_days()
                             .to_string(),
                     ),
+                    "tag" => {
+                        if tags_index.has_tag(&p.path, &expected) {
+                            Some("true".to_string())
+                        } else {
+                            Some("false".to_string())
+                        }
+                    }
                     _ => None,
                 };
                 match val {

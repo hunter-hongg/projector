@@ -1,5 +1,9 @@
+pub mod activity;
 pub mod completion;
+pub mod orphans;
 pub mod config;
+pub mod deps;
+pub mod search;
 pub mod export;
 pub mod inspect;
 pub mod list;
@@ -7,4 +11,5 @@ pub mod report;
 pub mod scan;
 pub mod snapshot;
 pub mod stats;
+pub mod tag;
 pub mod trend;

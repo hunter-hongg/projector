@@ -5,27 +5,18 @@ use crate::config::Config;
 use crate::export_template::{self, DashboardData, DashboardProject, RankItem, TypeDistItem};
 use crate::snapshot::SnapshotStore;
 
-pub fn subcmd_export_html(output: Option<String>) -> Result<()> {
-    let config = Config::load()?;
+fn ensure_parent_dir(path: &str) -> Result<()> {
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    Ok(())
+}
 
-    let latest = match SnapshotStore::load_latest()? {
-        Some(s) => s,
-        None => {
-            let html = export_template::render_empty_html();
-            if let Some(path) = output {
-                if let Some(parent) = std::path::Path::new(&path).parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                std::fs::write(&path, html)?;
-                println!("Exported empty dashboard to {}", path);
-            } else {
-                println!("{}", html);
-            }
-            return Ok(());
-        }
-    };
-
-    let stats = analyzer::compute_stats(&latest, config.report.stale_threshold_days);
+fn build_dashboard_data(
+    latest: &crate::snapshot::ScanSnapshot,
+    config: &Config,
+) -> DashboardData {
+    let stats = analyzer::compute_stats(latest, config.report.stale_threshold_days);
 
     let type_dist: Vec<TypeDistItem> = stats
         .type_distribution
@@ -83,7 +74,7 @@ pub fn subcmd_export_html(output: Option<String>) -> Result<()> {
             .collect()
     };
 
-    let data = DashboardData {
+    DashboardData {
         project_count: stats.total_projects,
         avg_health: stats.avg_health,
         total_loc: stats.total_loc,
@@ -98,15 +89,33 @@ pub fn subcmd_export_html(output: Option<String>) -> Result<()> {
         bottom5,
         has_data: stats.total_projects > 0,
         scanned_at: latest.timestamp.format("%Y-%m-%d %H:%M:%S").to_string(),
+    }
+}
+
+pub fn subcmd_export_html(output: Option<String>) -> Result<()> {
+    let config = Config::load()?;
+
+    let latest = match SnapshotStore::load_latest()? {
+        Some(s) => s,
+        None => {
+            let html = export_template::render_empty_html();
+            if let Some(ref path) = output {
+                ensure_parent_dir(path)?;
+                std::fs::write(path, html)?;
+                println!("Exported empty dashboard to {}", path);
+            } else {
+                println!("{}", html);
+            }
+            return Ok(());
+        }
     };
 
+    let data = build_dashboard_data(&latest, &config);
     let html = export_template::render_html(&data);
 
-    if let Some(path) = output {
-        if let Some(parent) = std::path::Path::new(&path).parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&path, html)?;
+    if let Some(ref path) = output {
+        ensure_parent_dir(path)?;
+        std::fs::write(path, html)?;
         println!("Exported dashboard to {}", path);
     } else {
         println!("{}", html);

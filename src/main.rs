@@ -1,13 +1,40 @@
 use anyhow::Result;
 use clap::Parser;
-use projector::command::{Commands, ConfigAction, ExportAction, Projector, SnapshotAction};
+use projector::command::{
+    Commands, ConfigAction, ExportAction, Projector, SnapshotAction, TagAction,
+};
 use projector::subcmd;
 
 fn main() -> Result<()> {
     let cli = Projector::parse();
     match cli.command {
-        Commands::List { dir } => {
-            subcmd::list::subcmd_list(dir)?;
+        Commands::List { dir, tag } => {
+            subcmd::list::subcmd_list(dir, tag)?;
+            Ok(())
+        }
+        Commands::Orphans {
+            days,
+            all,
+            format,
+        } => {
+            subcmd::orphans::subcmd_orphans(days.unwrap_or(90), all, format)?;
+            Ok(())
+        }
+        Commands::Activity {
+            days,
+            project,
+            format,
+        } => {
+            subcmd::activity::subcmd_activity(days.unwrap_or(7), project, format)?;
+            Ok(())
+        }
+        Commands::Deps {
+            path,
+            shared,
+            project,
+            format,
+        } => {
+            subcmd::deps::subcmd_deps(path, shared, project, format)?;
             Ok(())
         }
         Commands::Scan { dir } => {
@@ -21,6 +48,14 @@ fn main() -> Result<()> {
             filter,
         } => {
             subcmd::report::subcmd_report(diff, format, sort, filter)?;
+            Ok(())
+        }
+        Commands::Search {
+            query,
+            tag,
+            format,
+        } => {
+            subcmd::search::subcmd_search(query, tag, format)?;
             Ok(())
         }
         Commands::Config {
@@ -60,5 +95,20 @@ fn main() -> Result<()> {
             subcmd::snapshot::subcmd_snapshot_prune(keep, dry_run)?;
             Ok(())
         }
+        Commands::Tag {
+            action: TagAction::List { path },
+        } => {
+            subcmd::tag::subcmd_tag_list(path)?;
+            Ok(())
+        }
+        Commands::Tag {
+            action: TagAction::Set { path, tag },
+        } => subcmd::tag::subcmd_tag_set(path, tag),
+        Commands::Tag {
+            action: TagAction::Rm { path, tag },
+        } => subcmd::tag::subcmd_tag_rm(path, tag),
+        Commands::Tag {
+            action: TagAction::Clear { path },
+        } => subcmd::tag::subcmd_tag_clear(path),
     }
 }

@@ -61,7 +61,7 @@ fn print_stats_json(stats: &ProjectStats) {
             })
         }).collect::<Vec<_>>(),
     });
-    println!("{}", serde_json::to_string_pretty(&json).unwrap());
+    println!("{}", serde_json::to_string_pretty(&json).expect("stats json serialization should not fail"));
 }
 
 fn print_stats_table(stats: &ProjectStats) {

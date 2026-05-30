@@ -233,11 +233,13 @@ pub fn render_empty_html() -> String {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Projector Dashboard</title>
 <style>
+  :root { --bg: #1a1a2e; --text: #eaeaea; --muted: #888; }
+  @media (prefers-color-scheme: light) { :root { --bg: #ffffff; --text: #1a1a2e; --muted: #888; } }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #1a1a2e; color: #eaeaea; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); display: flex; align-items: center; justify-content: center; min-height: 100vh; }
   .empty { text-align: center; }
   .empty h1 { font-size: 2rem; margin-bottom: 12px; }
-  .empty p { color: #888; }
+  .empty p { color: var(--muted); }
 </style>
 </head>
 <body>
