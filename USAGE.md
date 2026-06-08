@@ -20,6 +20,14 @@ cargo install projector
 | [`scan`](#scan) | 扫描项目，保存 JSON 快照 |
 | [`report`](#report) | 显示健康仪表盘，可对比差异、排序、筛选 |
 | [`config`](#config) | 查看 / 修改配置 |
+| [`activity`](#activity) | 查看项目提交活动统计 |
+| [`deps`](#deps) | 分析项目依赖关系 |
+| [`orphans`](#orphans) | 查找孤立项目（无远程 + 长期无活动） |
+| [`search`](#search) | 搜索项目（名称、路径、类型、标签） |
+| [`tag`](#tag) | 项目管理标签 |
+| [`rank`](#rank) | 对项目排序（健康分、LOC、提交数等） |
+| [`brief`](#brief) | 生成项目简报 |
+| [`size`](#size) | 分析目录大小 |
 | [`inspect`](#inspect) | 深度分析单个项目 |
 | [`stats`](#stats) | 全局统计数据 |
 | [`trend`](#trend) | 跨快照趋势图（ASCII） |
@@ -34,12 +42,19 @@ cargo install projector
 列出目录下的 Git 项目目录和普通目录。
 
 ```bash
-projector list [dir]
+projector list [dir] [--tag <tag>]
 ```
 
 - `dir` — 目标目录，默认 `.`
+- `--tag <tag>` — 仅显示包含指定标签的项目
 
-输出：每个项目显示项目名、检测到的语言类型、最后修改时间。超过 30 天未修改的日期标红。
+输出：每个项目显示项目名、检测到的语言类型、最后修改时间、标签（如有）。超过 30 天未修改的日期标红。
+
+```bash
+projector list                         # 列出当前目录项目
+projector list ~/projects              # 列出指定目录
+projector list --tag work              # 仅显示标签为 work 的项目
+```
 
 ---
 
@@ -61,7 +76,7 @@ projector scan [dir]
 - 计算健康分
 - 保存 JSON 快照
 
-如果项目健康分低于 `alert.health_threshold`（默认 40），会在扫描结束时显示警告。
+如果项目健康分低于 `alert.health_threshold`（默认 40），会在扫描结束时显示警告及扣分原因。
 
 ---
 
@@ -130,6 +145,131 @@ projector config set report.stale_threshold_days 60
 ```
 
 配置文件位置：`~/.projector/config.toml`
+
+---
+
+## activity
+
+查看项目的提交活动统计。基于最近一次快照中的项目列表，分析每个项目的提交数量。指定 `--project` 时直接分析该目录（无需快照）。
+
+```bash
+projector activity [--days <N>] [--project <path>] [-f json]
+```
+
+| 参数 | 说明 |
+|------|------|
+| `--days <N>` | 统计最近 N 天的提交（默认 7） |
+| `--project <path>` | 仅分析指定项目路径（可选） |
+| `-f, --format` | 输出格式：`json` |
+
+```bash
+projector activity                         # 最近 7 天所有项目活动
+projector activity --days 7                # 最近一周
+projector activity --project ~/projects/myapp   # 单个项目
+projector activity -f json                 # JSON 格式
+```
+
+输出：
+- 总提交数、活跃项目数 / 总项目数
+- 最活跃项目列表（按提交数降序）
+- 闲置项目列表（无提交活动）
+
+---
+
+## deps
+
+分析项目的依赖关系。支持 Rust（Cargo.toml）、JavaScript（package.json）、Go（go.mod）、Python（pyproject.toml/requirements.txt）。
+
+```bash
+projector deps [path] [--shared] [--project <name>] [-f json]
+```
+
+| 参数 | 说明 |
+|------|------|
+| `path` | 项目路径（可选，默认基于最新快照扫描所有项目） |
+| `--shared` | 仅显示被 2 个以上项目共享的依赖 |
+| `--project <name>` | 按项目名称筛选（模糊匹配） |
+| `-f, --format` | 输出格式：`json` |
+
+```bash
+projector deps                                            # 所有项目依赖一览
+projector deps ~/projects/myapp                           # 单个项目依赖
+projector deps --shared                                   # 共享依赖（跨项目复用）
+projector deps --project myapp                            # 筛选名为 myapp 的项目
+projector deps --shared -f json                           # JSON 格式共享依赖
+```
+
+`--shared` 输出：每个共享依赖显示名称、版本、类型、使用它的项目列表。
+
+---
+
+## orphans
+
+查找孤立项目——未配置远程 origin 且超过指定天数无提交的项目。
+
+```bash
+projector orphans [--days <N>] [--all] [-f json]
+```
+
+| 参数 | 说明 |
+|------|------|
+| `--days <N>` | 无活动阈值天数（默认 90） |
+| `--all` | 同时显示非孤立项目和无 git 的项目 |
+| `-f, --format` | 输出格式：`json` |
+
+```bash
+projector orphans                         # 查找孤立项目（默认 90 天）
+projector orphans --days 30               # 更严格：30 天无活动即视为孤立
+projector orphans --all                   # 完整视图（含非孤立项目）
+projector orphans -f json                 # JSON 格式
+```
+
+---
+
+## search
+
+搜索项目。基于最新快照，匹配项目名称、路径、类型和标签。
+
+```bash
+projector search <query> [--tag <tag>] [-f json]
+```
+
+| 参数 | 说明 |
+|------|------|
+| `query` | 搜索关键词（必填） |
+| `--tag <tag>` | 仅搜索包含指定标签的项目 |
+| `-f, --format` | 输出格式：`json` |
+
+```bash
+projector search rust                     # 搜索名称/路径/类型含 "rust" 的项目
+projector search myapp                    # 搜索项目名含 "myapp" 的
+projector search web --tag work           # 标签为 work 的项目中搜索 "web"
+projector search rust -f json             # JSON 格式
+```
+
+---
+
+## tag
+
+管理项目的标签。标签存储在 `~/.projector/tags.toml`，用于分类和筛选项目。
+
+```bash
+projector tag list [path]          # 查看所有标签或指定项目的标签
+projector tag set <path> <tag>     # 为项目添加标签
+projector tag rm <path> <tag>      # 移除项目的指定标签
+projector tag clear <path>         # 清除项目的所有标签
+```
+
+```bash
+projector tag list                          # 列出所有标签及使用次数
+projector tag list ~/projects/myapp         # 查看指定项目的标签
+projector tag set ~/projects/myapp work     # 标记为 work
+projector tag set ~/projects/myapp rust     # 标记为 rust
+projector tag rm ~/projects/myapp work      # 移除 work 标签
+projector tag clear ~/projects/myapp        # 清除项目所有标签
+```
+
+标签用于 `list --tag` 和 `search --tag` 筛选。
 
 ---
 
@@ -288,6 +428,15 @@ projector completion fish > ~/.config/fish/completions/projector.fish
 
 ---
 
+## 标签存储
+
+- 标签文件：`~/.projector/tags.toml`
+- TOML 格式，存储项目路径到标签列表的映射
+- 用于 `list --tag` 和 `search --tag` 筛选
+- 与快照独立管理，不会因 `snapshot prune` 丢失
+
+---
+
 ## 配置参考
 
 完整的 `~/.projector/config.toml`：
@@ -318,15 +467,31 @@ projector scan
 # 3. 查看仪表盘
 projector report
 
-# 4. 深度分析问题项目
+# 4. 为项目打标签分类
+projector tag set ~/projects/work-project work
+projector tag set ~/projects/hobby-project hobby
+
+# 5. 按标签筛选查看
+projector list --tag work
+
+# 6. 深度分析问题项目
 projector inspect ~/projects/some-project
 
-# 5. 定期扫描（可加 cron）
+# 7. 查看活动趋势
+projector activity --days 30
+
+# 8. 找出孤立项目
+projector orphans
+
+# 9. 查看跨项目共享依赖
+projector deps --shared
+
+# 10. 定期扫描（可加 cron）
 projector scan && projector report --diff
 
-# 6. 导出仪表盘分享
+# 11. 导出仪表盘分享
 projector export html -o dashboard.html
 
-# 7. 清理旧快照
+# 12. 清理旧快照
 projector snapshot prune --keep 20
 ```
