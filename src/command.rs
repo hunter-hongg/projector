@@ -58,6 +58,20 @@ pub enum Commands {
         #[arg(short = 'f', long = "format")]
         format: Option<String>,
     },
+    Rank {
+        #[arg(long)]
+        by: Option<String>,
+        #[arg(long)]
+        reverse: bool,
+        #[arg(long = "type")]
+        type_filter: Option<String>,
+        #[arg(long)]
+        top: Option<usize>,
+        #[arg(long)]
+        category: bool,
+        #[arg(short = 'f', long = "format")]
+        format: Option<String>,
+    },
     Search {
         query: String,
         #[arg(long)]

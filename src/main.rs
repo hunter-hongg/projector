@@ -20,6 +20,10 @@ fn main() -> Result<()> {
             subcmd::orphans::subcmd_orphans(days.unwrap_or(90), all, format)?;
             Ok(())
         }
+        Commands::Rank { by, reverse, type_filter, top, category, format } => {
+            subcmd::rank::subcmd_rank(by, reverse, type_filter, top, category, format)?;
+            Ok(())
+        }
         Commands::Activity {
             days,
             project,

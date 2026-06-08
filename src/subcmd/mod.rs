@@ -2,6 +2,7 @@ pub mod activity;
 pub mod brief;
 pub mod completion;
 pub mod orphans;
+pub mod rank;
 pub mod size;
 pub mod config;
 pub mod deps;
