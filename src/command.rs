@@ -35,6 +35,12 @@ pub enum Commands {
         #[arg(short = 'f', long = "format")]
         format: Option<String>,
     },
+    Brief {
+        #[arg(long, default_value = "1")]
+        days: u32,
+        #[arg(short = 'f', long = "format")]
+        format: Option<String>,
+    },
     Deps {
         path: Option<String>,
         #[arg(long)]

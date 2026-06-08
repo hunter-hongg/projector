@@ -1,4 +1,5 @@
 pub mod activity;
+pub mod brief;
 pub mod completion;
 pub mod orphans;
 pub mod size;

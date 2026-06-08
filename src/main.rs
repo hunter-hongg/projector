@@ -28,6 +28,10 @@ fn main() -> Result<()> {
             subcmd::activity::subcmd_activity(days.unwrap_or(7), project, format)?;
             Ok(())
         }
+        Commands::Brief { days, format } => {
+            subcmd::brief::subcmd_brief(days, format)?;
+            Ok(())
+        }
         Commands::Deps {
             path,
             shared,
