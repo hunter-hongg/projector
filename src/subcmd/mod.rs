@@ -1,6 +1,7 @@
 pub mod activity;
 pub mod completion;
 pub mod orphans;
+pub mod size;
 pub mod config;
 pub mod deps;
 pub mod search;

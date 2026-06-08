@@ -59,6 +59,15 @@ pub enum Commands {
         #[arg(short = 'f', long = "format")]
         format: Option<String>,
     },
+    Size {
+        path: Option<String>,
+        #[arg(long)]
+        top: Option<usize>,
+        #[arg(long)]
+        deep: bool,
+        #[arg(short = 'f', long = "format")]
+        format: Option<String>,
+    },
     Config {
         #[command(subcommand)]
         action: Option<ConfigAction>,

@@ -58,6 +58,10 @@ fn main() -> Result<()> {
             subcmd::search::subcmd_search(query, tag, format)?;
             Ok(())
         }
+        Commands::Size { path, top, deep, format } => {
+            subcmd::size::subcmd_size(path, top, deep, format)?;
+            Ok(())
+        }
         Commands::Config {
             action: Some(ConfigAction::Set { key, value }),
         } => subcmd::config::subcmd_config_set(key, value),
