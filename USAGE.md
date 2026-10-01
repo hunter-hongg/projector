@@ -226,6 +226,91 @@ projector orphans -f json                 # JSON 格式
 
 ---
 
+## rank
+
+对项目排序。基于最新快照，按指定指标对全部项目排名。
+
+```bash
+projector rank [--by <metric>] [--reverse] [--type <filter>] [--top <N>] [--category] [-f json]
+```
+
+| 参数 | 说明 |
+|------|------|
+| `--by <metric>` | 排序指标：`health`（默认）、`loc`、`activity`（近 30 天提交数）、`age`（距最后提交天数）、`commits`（总提交数） |
+| `--reverse` | 升序排列（默认降序） |
+| `--type <filter>` | 按项目类型筛选（模糊匹配） |
+| `--top <N>` | 仅显示前 N 名 |
+| `--category` | 按类型分组，仅显示每种类型的第一名 |
+| `-f, --format` | 输出格式：`json` |
+
+```bash
+projector rank                          # 按健康分降序排名
+projector rank --by loc --top 5         # 代码行数最多的 5 个项目
+projector rank --by activity            # 近 30 天最活跃的项目
+projector rank --by age --reverse       # 最年轻的（最近有提交的项目）
+projector rank --type Rust --top 3      # 仅 Rust 项目前 3 名
+projector rank --category               # 每种语言的最佳项目
+projector rank --by commits -f json     # JSON 格式
+```
+
+---
+
+## brief
+
+生成项目简报。基于最新快照，输出项目总数、健康分布、活动统计。
+
+```bash
+projector brief [--days <N>] [-f json]
+```
+
+| 参数 | 说明 |
+|------|------|
+| `--days <N>` | 统计最近 N 天的提交活动（默认 1） |
+| `-f, --format` | 输出格式：`json` |
+
+输出：
+- 项目总数、平均健康分、健康分布（≥80 / 50–79 / <50）
+- 总 LOC、脏状态项目数、stale 项目数
+- 最近 N 天有提交的项目列表（按提交数降序）
+
+```bash
+projector brief                         # 最近 1 天的项目简报
+projector brief --days 7               # 最近 7 天
+projector brief --days 30 -f json       # JSON 格式，最近 30 天
+```
+
+---
+
+## size
+
+分析项目目录的磁盘占用。
+
+```bash
+projector size [path] [--top <N>] [--deep] [-f json]
+```
+
+| 参数 | 说明 |
+|------|------|
+| `path` | 指定项目路径（可选） |
+| `--top <N>` | 仅显示最大的 N 个项目（不指定 `path` 时基于快照） |
+| `--deep` | 指定 `path` 时按源码 / 依赖 / git 对象 / 其他分类统计 |
+| `-f, --format` | 输出格式：`json` |
+
+```bash
+projector size                        # 基于快照显示所有项目的磁盘占用
+projector size --top 5                # 最大的 5 个项目
+projector size ~/projects/myapp       # 单个项目大小
+projector size ~/projects/myapp --deep   # 深度分解（源码 / 依赖 / git / 其他）
+projector size -f json                # JSON 格式
+```
+
+`--deep` 输出分类：
+- **源码** — 常见代码扩展名的文件总大小
+- **依赖** — `node_modules`、`target` 目录大小
+- **Git** — `.git` 目录大小
+- **其他** — 剩余部分
+
+---
 ## search
 
 搜索项目。基于最新快照，匹配项目名称、路径、类型和标签。
