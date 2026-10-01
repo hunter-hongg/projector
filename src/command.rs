@@ -159,18 +159,8 @@ pub enum SnapshotAction {
 
 #[derive(Subcommand)]
 pub enum TagAction {
-    List {
-        path: Option<String>,
-    },
-    Set {
-        path: String,
-        tag: String,
-    },
-    Rm {
-        path: String,
-        tag: String,
-    },
-    Clear {
-        path: String,
-    },
+    List { path: Option<String> },
+    Set { path: String, tag: String },
+    Rm { path: String, tag: String },
+    Clear { path: String },
 }

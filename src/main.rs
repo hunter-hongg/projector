@@ -12,15 +12,18 @@ fn main() -> Result<()> {
             subcmd::list::subcmd_list(dir, tag)?;
             Ok(())
         }
-        Commands::Orphans {
-            days,
-            all,
-            format,
-        } => {
+        Commands::Orphans { days, all, format } => {
             subcmd::orphans::subcmd_orphans(days.unwrap_or(90), all, format)?;
             Ok(())
         }
-        Commands::Rank { by, reverse, type_filter, top, category, format } => {
+        Commands::Rank {
+            by,
+            reverse,
+            type_filter,
+            top,
+            category,
+            format,
+        } => {
             subcmd::rank::subcmd_rank(by, reverse, type_filter, top, category, format)?;
             Ok(())
         }
@@ -58,15 +61,16 @@ fn main() -> Result<()> {
             subcmd::report::subcmd_report(diff, format, sort, filter)?;
             Ok(())
         }
-        Commands::Search {
-            query,
-            tag,
-            format,
-        } => {
+        Commands::Search { query, tag, format } => {
             subcmd::search::subcmd_search(query, tag, format)?;
             Ok(())
         }
-        Commands::Size { path, top, deep, format } => {
+        Commands::Size {
+            path,
+            top,
+            deep,
+            format,
+        } => {
             subcmd::size::subcmd_size(path, top, deep, format)?;
             Ok(())
         }

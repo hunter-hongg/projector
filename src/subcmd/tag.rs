@@ -44,7 +44,11 @@ pub fn subcmd_tag_set(path: String, tag: String) -> Result<()> {
         index.add_tag(&path, &tag);
         index.save()?;
     }
-    println!("  Tagged {} with {}", color::cyan(&path), color::green(&tag));
+    println!(
+        "  Tagged {} with {}",
+        color::cyan(&path),
+        color::green(&tag)
+    );
     Ok(())
 }
 

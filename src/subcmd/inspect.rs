@@ -6,7 +6,7 @@ use chrono::TimeZone;
 use crate::analyzer;
 use crate::color;
 use crate::config::Config;
-use crate::snapshot::{format_health_deductions, ProjectSnapshot};
+use crate::snapshot::{ProjectSnapshot, format_health_deductions};
 
 pub fn subcmd_inspect(path: Option<String>, format: Option<String>) -> Result<()> {
     let config = Config::load()?;
@@ -35,11 +35,7 @@ pub fn subcmd_inspect(path: Option<String>, format: Option<String>) -> Result<()
     Ok(())
 }
 
-fn analyze_project_on_demand(
-    dir: &Path,
-    config: &Config,
-    quiet: bool,
-) -> Result<ProjectSnapshot> {
+fn analyze_project_on_demand(dir: &Path, config: &Config, quiet: bool) -> Result<ProjectSnapshot> {
     let stale_threshold = config.report.stale_threshold_days;
     let project_type = analyzer::ProjectType::detect(dir)?;
     let is_git = dir.join(".git").exists();
@@ -185,7 +181,8 @@ fn print_full_project_info(
         println!();
     }
 
-    let deductions = format_health_deductions(git.is_dirty, git.last_commit_date, loc, stale_threshold);
+    let deductions =
+        format_health_deductions(git.is_dirty, git.last_commit_date, loc, stale_threshold);
     if !deductions.is_empty() {
         println!("  Health deductions: {}", deductions.join(", "));
     }
@@ -201,10 +198,12 @@ mod tests {
     fn test_inspect_invalid_format() {
         let result = subcmd_inspect(Some(".".to_string()), Some("xml".to_string()));
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Unsupported format"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Unsupported format")
+        );
     }
 
     #[test]

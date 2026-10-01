@@ -61,14 +61,20 @@ fn print_stats_json(stats: &ProjectStats) {
             })
         }).collect::<Vec<_>>(),
     });
-    println!("{}", serde_json::to_string_pretty(&json).expect("stats json serialization should not fail"));
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json).expect("stats json serialization should not fail")
+    );
 }
 
 fn print_stats_table(stats: &ProjectStats) {
     println!();
     println!("  {}", color::info("Global project statistics"));
     println!();
-    println!("  Total projects:     {}", color::cyan(&stats.total_projects.to_string()));
+    println!(
+        "  Total projects:     {}",
+        color::cyan(&stats.total_projects.to_string())
+    );
     println!("  Total LOC:          {}", stats.total_loc);
     println!("  Average health:     {:.1}/100", stats.avg_health);
     println!("  Median health:      {:.1}/100", stats.median_health);

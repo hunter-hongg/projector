@@ -7,11 +7,7 @@ use crate::analyzer;
 use crate::color;
 use crate::snapshot::SnapshotStore;
 
-pub fn subcmd_activity(
-    days: u32,
-    project: Option<String>,
-    format: Option<String>,
-) -> Result<()> {
+pub fn subcmd_activity(days: u32, project: Option<String>, format: Option<String>) -> Result<()> {
     let format = format.unwrap_or_default();
     if !format.is_empty() && format != "json" {
         anyhow::bail!("Unsupported format: '{}'. Use 'json'.", format);
@@ -64,10 +60,7 @@ pub fn subcmd_activity(
             .flatten()
             .unwrap_or(0);
 
-        let name = proj_path
-            .split('/')
-            .next_back()
-            .unwrap_or(proj_path);
+        let name = proj_path.split('/').next_back().unwrap_or(proj_path);
 
         let last_commit = get_last_commit_date(dir);
 
@@ -119,14 +112,27 @@ pub fn subcmd_activity(
         );
         println!("  ========================================");
         println!();
-        println!("  Total commits:      {}", color::cyan(&total_commits.to_string()));
-        println!("  Active projects:    {} / {}", color::green(&active_count.to_string()), project_activity.len());
+        println!(
+            "  Total commits:      {}",
+            color::cyan(&total_commits.to_string())
+        );
+        println!(
+            "  Active projects:    {} / {}",
+            color::green(&active_count.to_string()),
+            project_activity.len()
+        );
         println!();
 
         project_activity.sort_by_key(|b| std::cmp::Reverse(b.recent_commits));
 
-        let hot: Vec<_> = project_activity.iter().filter(|a| a.recent_commits > 0).collect();
-        let idle: Vec<_> = project_activity.iter().filter(|a| a.recent_commits == 0).collect();
+        let hot: Vec<_> = project_activity
+            .iter()
+            .filter(|a| a.recent_commits > 0)
+            .collect();
+        let idle: Vec<_> = project_activity
+            .iter()
+            .filter(|a| a.recent_commits == 0)
+            .collect();
 
         if !hot.is_empty() {
             println!("  Hottest projects:");

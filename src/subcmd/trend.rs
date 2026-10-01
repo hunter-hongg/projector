@@ -24,8 +24,7 @@ pub fn subcmd_trend(
     }
 
     let filtered: Vec<_> = if let Some(d) = days {
-        let cutoff = chrono::Utc::now().naive_utc()
-            - chrono::Duration::days(d as i64);
+        let cutoff = chrono::Utc::now().naive_utc() - chrono::Duration::days(d as i64);
         snapshots
             .into_iter()
             .filter(|s| s.timestamp >= cutoff)
@@ -46,9 +45,10 @@ pub fn subcmd_trend(
         filtered
             .iter()
             .filter_map(|s| {
-                let proj = s.projects.iter().find(|proj| {
-                    proj.path == *p || proj.path.ends_with(p.as_str())
-                })?;
+                let proj = s
+                    .projects
+                    .iter()
+                    .find(|proj| proj.path == *p || proj.path.ends_with(p.as_str()))?;
                 let val = match metric.as_str() {
                     "loc" => proj.lines_of_code as f64,
                     _ => proj.health_score as f64,
@@ -64,9 +64,15 @@ pub fn subcmd_trend(
             .iter()
             .map(|s| {
                 let val = if metric == "loc" {
-                    s.projects.iter().map(|p| p.lines_of_code as f64).sum::<f64>()
+                    s.projects
+                        .iter()
+                        .map(|p| p.lines_of_code as f64)
+                        .sum::<f64>()
                 } else {
-                    s.projects.iter().map(|p| p.health_score as f64).sum::<f64>()
+                    s.projects
+                        .iter()
+                        .map(|p| p.health_score as f64)
+                        .sum::<f64>()
                         / s.projects.len() as f64
                 };
                 TrendPoint {
@@ -91,13 +97,14 @@ pub fn subcmd_trend(
         return Ok(());
     }
 
-    let metric_label = if metric == "loc" { "LOC" } else { "Health Score" };
+    let metric_label = if metric == "loc" {
+        "LOC"
+    } else {
+        "Health Score"
+    };
 
     println!();
-    println!(
-        "  {}",
-        color::info(&format!("{} Trend", metric_label))
-    );
+    println!("  {}", color::info(&format!("{} Trend", metric_label)));
     if let Some(ref p) = path {
         println!("  Project: {}", color::cyan(p));
     }

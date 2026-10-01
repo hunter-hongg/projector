@@ -108,7 +108,11 @@ impl SnapshotStore {
         if keep as usize >= entries.len() {
             return Ok(Vec::new());
         }
-        let to_remove: Vec<_> = entries.iter().take(entries.len() - keep as usize).cloned().collect();
+        let to_remove: Vec<_> = entries
+            .iter()
+            .take(entries.len() - keep as usize)
+            .cloned()
+            .collect();
         if !dry_run {
             for path in &to_remove {
                 std::fs::remove_file(path)?;

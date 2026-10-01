@@ -1,5 +1,5 @@
-use std::path::Path;
 use anyhow::Result;
+use std::path::Path;
 
 use crate::analyzer;
 use crate::color;
@@ -42,7 +42,10 @@ pub fn subcmd_size(
     let latest = match SnapshotStore::load_latest()? {
         Some(s) => s,
         None => {
-            println!("{}", color::error("No snapshots found. Run `projector scan` first."));
+            println!(
+                "{}",
+                color::error("No snapshots found. Run `projector scan` first.")
+            );
             return Ok(());
         }
     };
@@ -63,22 +66,35 @@ pub fn subcmd_size(
     }
 
     if fmt == "json" {
-        let json: Vec<serde_json::Value> = entries.iter().map(|(path, size)| {
-            serde_json::json!({
-                "path": path,
-                "size": size,
-                "size_human": analyzer::human_size(*size),
+        let json: Vec<serde_json::Value> = entries
+            .iter()
+            .map(|(path, size)| {
+                serde_json::json!({
+                    "path": path,
+                    "size": size,
+                    "size_human": analyzer::human_size(*size),
+                })
             })
-        }).collect();
+            .collect();
         println!("{}", serde_json::to_string_pretty(&json)?);
     } else {
         println!();
         println!("  {}", color::info("Project disk usage"));
         println!();
-        let max_name = entries.iter().map(|(p, _)| p.split('/').next_back().unwrap_or(p).len()).max().unwrap_or(20).min(40);
+        let max_name = entries
+            .iter()
+            .map(|(p, _)| p.split('/').next_back().unwrap_or(p).len())
+            .max()
+            .unwrap_or(20)
+            .min(40);
         for (path, size) in &entries {
             let name = path.split('/').next_back().unwrap_or(path);
-            println!("  {:max_name$}  {}", color::cyan(name), analyzer::human_size(*size), max_name = max_name);
+            println!(
+                "  {:max_name$}  {}",
+                color::cyan(name),
+                analyzer::human_size(*size),
+                max_name = max_name
+            );
         }
         println!();
     }
@@ -88,7 +104,14 @@ pub fn subcmd_size(
 
 fn print_deep_breakdown(dir: &Path, fmt: &str) -> Result<()> {
     let total = analyzer::calc_dir_size(dir, false);
-    let source = dir_size_by_extensions(dir, &["rs", "js", "ts", "jsx", "tsx", "go", "py", "java", "kt", "kts", "c", "h", "cpp", "hpp", "cc", "cxx", "ml", "mli", "dart", "toml", "json", "yaml", "yml", "md", "css", "html", "sh", "bash", "zsh", "fish"]);
+    let source = dir_size_by_extensions(
+        dir,
+        &[
+            "rs", "js", "ts", "jsx", "tsx", "go", "py", "java", "kt", "kts", "c", "h", "cpp",
+            "hpp", "cc", "cxx", "ml", "mli", "dart", "toml", "json", "yaml", "yml", "md", "css",
+            "html", "sh", "bash", "zsh", "fish",
+        ],
+    );
     let deps = dir_size_by_name(dir, &["node_modules", "target"]);
     let git = dir_size_by_name(dir, &[".git"]);
     let other = total.saturating_sub(source + deps + git);
@@ -107,7 +130,10 @@ fn print_deep_breakdown(dir: &Path, fmt: &str) -> Result<()> {
         });
         println!("{}", serde_json::to_string_pretty(&json)?);
     } else {
-        println!("  Deep breakdown for {}", color::cyan(&dir.to_string_lossy()));
+        println!(
+            "  Deep breakdown for {}",
+            color::cyan(&dir.to_string_lossy())
+        );
         println!("    Total: {}", analyzer::human_size(total));
         println!("    Source code:  {}", analyzer::human_size(source));
         println!("    Dependencies: {}", analyzer::human_size(deps));
@@ -131,14 +157,12 @@ fn dir_size_by_extensions(dir: &Path, exts: &[&str]) -> u64 {
                 }
                 if path.is_dir() {
                     stack.push(path);
-                } else if path.is_file() {
-                    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                        if exts.contains(&ext) {
-                            if let Ok(meta) = std::fs::metadata(&path) {
-                                total += meta.len();
-                            }
-                        }
-                    }
+                } else if path.is_file()
+                    && let Some(ext) = path.extension().and_then(|e| e.to_str())
+                    && exts.contains(&ext)
+                    && let Ok(meta) = std::fs::metadata(&path)
+                {
+                    total += meta.len();
                 }
             }
         }
@@ -168,7 +192,12 @@ mod tests {
     fn test_subcmd_size_invalid_format() {
         let result = subcmd_size(None, None, false, Some("xml".to_string()));
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unsupported format"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Unsupported format")
+        );
     }
 
     #[test]

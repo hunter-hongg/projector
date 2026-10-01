@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Command;
 use clap::CommandFactory;
-use clap_complete::{generate, Shell};
+use clap_complete::{Shell, generate};
 
 use crate::command::{Projector, ShellKind};
 

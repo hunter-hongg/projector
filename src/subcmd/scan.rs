@@ -6,7 +6,7 @@ use chrono::Utc;
 use crate::analyzer;
 use crate::color;
 use crate::config::Config;
-use crate::snapshot::{format_health_deductions, ScanSnapshot, SnapshotStore};
+use crate::snapshot::{ScanSnapshot, SnapshotStore, format_health_deductions};
 
 pub fn subcmd_scan(dir: Option<String>) -> Result<()> {
     let config = Config::load()?;
@@ -51,10 +51,10 @@ pub fn subcmd_scan(dir: Option<String>) -> Result<()> {
             println!();
             println!(
                 "  {}",
-            color::yellow(&format!(
-                "Projects with health score below {}: ",
-                alert_threshold
-            ))
+                color::yellow(&format!(
+                    "Projects with health score below {}: ",
+                    alert_threshold
+                ))
             );
             for p in &low_health {
                 let name = p.path.split('/').next_back().unwrap_or(&p.path);

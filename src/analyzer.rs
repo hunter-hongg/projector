@@ -330,10 +330,10 @@ pub fn calc_dir_size(dir: &Path, skip_hidden: bool) -> u64 {
                 }
                 if path.is_dir() {
                     stack.push(path);
-                } else if path.is_file() {
-                    if let Ok(meta) = fs::metadata(&path) {
-                        total += meta.len();
-                    }
+                } else if path.is_file()
+                    && let Ok(meta) = fs::metadata(&path)
+                {
+                    total += meta.len();
                 }
             }
         }
@@ -821,17 +821,16 @@ pub struct TrendPoint {
     pub value: f64,
 }
 
-pub fn draw_ascii_chart(
-    points: &[TrendPoint],
-    width: usize,
-    height: usize,
-) -> Vec<String> {
+pub fn draw_ascii_chart(points: &[TrendPoint], width: usize, height: usize) -> Vec<String> {
     if points.is_empty() {
         return vec!["(no data)".to_string()];
     }
 
     let min_val = points.iter().map(|p| p.value).fold(f64::INFINITY, f64::min);
-    let max_val = points.iter().map(|p| p.value).fold(f64::NEG_INFINITY, f64::max);
+    let max_val = points
+        .iter()
+        .map(|p| p.value)
+        .fold(f64::NEG_INFINITY, f64::max);
 
     if (max_val - min_val).abs() < f64::EPSILON {
         return vec![format!("all values = {:.1}", min_val)];
@@ -852,7 +851,11 @@ pub fn draw_ascii_chart(
             || (val - (min_val + (max_val - min_val) * 0.5)).abs() < (max_val - min_val) * 0.02
             || (val - (min_val + (max_val - min_val) * 0.75)).abs() < (max_val - min_val) * 0.02;
 
-        let label = if show_label { format!("{:.0}", val) } else { String::new() };
+        let label = if show_label {
+            format!("{:.0}", val)
+        } else {
+            String::new()
+        };
 
         let padded_label = if row % 2 == 0 || !label.is_empty() {
             format!("{:>6} ", label)
@@ -862,8 +865,8 @@ pub fn draw_ascii_chart(
 
         let mut row_chars = String::with_capacity(plot_width);
         for col in 0..plot_width {
-            let point_idx = (col as f64 / (plot_width - 1) as f64 * (points.len() - 1) as f64)
-                .round() as usize;
+            let point_idx =
+                (col as f64 / (plot_width - 1) as f64 * (points.len() - 1) as f64).round() as usize;
             let point_val = points[point_idx].value;
             let point_ratio = (point_val - min_val) / (max_val - min_val);
 
@@ -879,9 +882,7 @@ pub fn draw_ascii_chart(
                 let prev_y = (plot_height - 1) as f64
                     * (1.0 - (points[prev_idx].value - min_val) / (max_val - min_val));
                 let row_f = row as f64;
-                if (row_f > prev_y && row_f < y_pos)
-                    || (row_f < prev_y && row_f > y_pos)
-                {
+                if (row_f > prev_y && row_f < y_pos) || (row_f < prev_y && row_f > y_pos) {
                     row_chars.push('│');
                 } else {
                     row_chars.push(' ');
@@ -1491,7 +1492,7 @@ mod tests {
         let dir = std::env::temp_dir().join("projector_test_size_deep");
         let _ = std::fs::create_dir_all(&dir);
         let _ = std::fs::create_dir_all(dir.join(".hidden"));
-        std::fs::write(dir.join(".hidden").join("big.bin"), &vec![0u8; 10_000]).unwrap();
+        std::fs::write(dir.join(".hidden").join("big.bin"), vec![0u8; 10_000]).unwrap();
         let size_skip_hidden = calc_dir_size(&dir, true);
         let size_include_hidden = calc_dir_size(&dir, false);
         assert!(size_include_hidden > size_skip_hidden);

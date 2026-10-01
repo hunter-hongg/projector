@@ -12,10 +12,7 @@ fn ensure_parent_dir(path: &str) -> Result<()> {
     Ok(())
 }
 
-fn build_dashboard_data(
-    latest: &crate::snapshot::ScanSnapshot,
-    config: &Config,
-) -> DashboardData {
+fn build_dashboard_data(latest: &crate::snapshot::ScanSnapshot, config: &Config) -> DashboardData {
     let stats = analyzer::compute_stats(latest, config.report.stale_threshold_days);
 
     let type_dist: Vec<TypeDistItem> = stats

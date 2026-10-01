@@ -41,10 +41,7 @@ pub fn subcmd_report(
     if format == "json" {
         let mut json = serde_json::to_value(&latest)?;
         if let Some(obj) = json.as_object_mut() {
-            obj.insert(
-                "projects".to_string(),
-                serde_json::to_value(&projects)?,
-            );
+            obj.insert("projects".to_string(), serde_json::to_value(&projects)?);
         }
         println!("{}", serde_json::to_string_pretty(&json)?);
         return Ok(());
@@ -188,10 +185,7 @@ fn print_diff(latest: &crate::snapshot::ScanSnapshot) -> Result<()> {
     Ok(())
 }
 
-fn apply_sort(
-    mut projects: Vec<ProjectSnapshot>,
-    sort_spec: &str,
-) -> Result<Vec<ProjectSnapshot>> {
+fn apply_sort(mut projects: Vec<ProjectSnapshot>, sort_spec: &str) -> Result<Vec<ProjectSnapshot>> {
     let (field, descending) = if let Some(rest) = sort_spec.strip_prefix('-') {
         (rest, true)
     } else {
@@ -271,80 +265,65 @@ fn apply_filters(
         }
 
         filtered.retain(|p| {
-                let val = match field.as_str() {
-                    "name" => Some(p.path.clone()),
-                    "type" => Some(p.project_type.clone()),
-                    "dirty" => Some(p.is_dirty.to_string()),
-                    "branch" => Some(p.git_branch.clone()),
-                    "health" => Some(p.health_score.to_string()),
-                    "loc" => Some(p.lines_of_code.to_string()),
-                    "last_commit" => Some(
-                        (now - p.last_commit_date)
-                            .num_days()
-                            .to_string(),
-                    ),
-                    "tag" => {
-                        if tags_index.has_tag(&p.path, &expected) {
-                            Some("true".to_string())
+            let val = match field.as_str() {
+                "name" => Some(p.path.clone()),
+                "type" => Some(p.project_type.clone()),
+                "dirty" => Some(p.is_dirty.to_string()),
+                "branch" => Some(p.git_branch.clone()),
+                "health" => Some(p.health_score.to_string()),
+                "loc" => Some(p.lines_of_code.to_string()),
+                "last_commit" => Some((now - p.last_commit_date).num_days().to_string()),
+                "tag" => {
+                    if tags_index.has_tag(&p.path, &expected) {
+                        Some("true".to_string())
+                    } else {
+                        Some("false".to_string())
+                    }
+                }
+                _ => None,
+            };
+            match val {
+                Some(v) => match op.as_str() {
+                    "eq" => v.eq_ignore_ascii_case(&expected),
+                    "gte" => {
+                        if let (Ok(a), Ok(b)) = (v.parse::<f64>(), expected.parse::<f64>()) {
+                            a >= b
                         } else {
-                            Some("false".to_string())
+                            v >= expected
                         }
                     }
-                    _ => None,
-                };
-                match val {
-                    Some(v) => match op.as_str() {
-                        "eq" => v.eq_ignore_ascii_case(&expected),
-                        "gte" => {
-                            if let (Ok(a), Ok(b)) =
-                                (v.parse::<f64>(), expected.parse::<f64>())
-                            {
-                                a >= b
-                            } else {
-                                v >= expected
-                            }
+                    "lte" => {
+                        if let (Ok(a), Ok(b)) = (v.parse::<f64>(), expected.parse::<f64>()) {
+                            a <= b
+                        } else {
+                            v <= expected
                         }
-                        "lte" => {
-                            if let (Ok(a), Ok(b)) =
-                                (v.parse::<f64>(), expected.parse::<f64>())
-                            {
-                                a <= b
-                            } else {
-                                v <= expected
-                            }
+                    }
+                    "gt" => {
+                        if let (Ok(a), Ok(b)) = (v.parse::<f64>(), expected.parse::<f64>()) {
+                            a > b
+                        } else {
+                            v > expected
                         }
-                        "gt" => {
-                            if let (Ok(a), Ok(b)) =
-                                (v.parse::<f64>(), expected.parse::<f64>())
-                            {
-                                a > b
-                            } else {
-                                v > expected
-                            }
+                    }
+                    "lt" => {
+                        if let (Ok(a), Ok(b)) = (v.parse::<f64>(), expected.parse::<f64>()) {
+                            a < b
+                        } else {
+                            v < expected
                         }
-                        "lt" => {
-                            if let (Ok(a), Ok(b)) =
-                                (v.parse::<f64>(), expected.parse::<f64>())
-                            {
-                                a < b
-                            } else {
-                                v < expected
-                            }
-                        }
-                        _ => false,
-                    },
-                    None => true,
-                }
-            });
+                    }
+                    _ => false,
+                },
+                None => true,
+            }
+        });
     }
 
     Ok(filtered)
 }
 
-fn parse_field_op_value(
-    input: &str,
-    original: &str,
-) -> Result<(String, String, String)> {
+fn parse_field_op_value(input: &str, original: &str) -> Result<(String, String, String)> {
     let eq_pos = input.find('=').ok_or_else(|| {
         anyhow::anyhow!(
             "Invalid filter syntax: '{}'. Use format <field>[:<op>]=<value>",
@@ -540,8 +519,7 @@ mod tests {
             make_project("/b", "Python", 80, false, 200, "main"),
             make_project("/c", "Rust", 70, false, 300, "main"),
         ];
-        let filtered =
-            apply_filters(projects, &["health:gte=70".to_string()], 90).unwrap();
+        let filtered = apply_filters(projects, &["health:gte=70".to_string()], 90).unwrap();
         assert_eq!(filtered.len(), 2);
     }
 
@@ -551,8 +529,7 @@ mod tests {
             make_project("/a", "Rust", 60, false, 100, "main"),
             make_project("/b", "Python", 80, false, 200, "main"),
         ];
-        let filtered =
-            apply_filters(projects, &["health:lte=70".to_string()], 90).unwrap();
+        let filtered = apply_filters(projects, &["health:lte=70".to_string()], 90).unwrap();
         assert_eq!(filtered.len(), 1);
     }
 
@@ -594,8 +571,7 @@ mod tests {
 
     #[test]
     fn test_parse_field_op_value_gte() {
-        let (field, op, val) =
-            parse_field_op_value("health:gte=80", "health:gte=80").unwrap();
+        let (field, op, val) = parse_field_op_value("health:gte=80", "health:gte=80").unwrap();
         assert_eq!(field, "health");
         assert_eq!(op, "gte");
         assert_eq!(val, "80");

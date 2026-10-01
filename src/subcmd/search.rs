@@ -4,11 +4,7 @@ use crate::color;
 use crate::snapshot::SnapshotStore;
 use crate::tags::TagsIndex;
 
-pub fn subcmd_search(
-    query: String,
-    tag: Option<String>,
-    format: Option<String>,
-) -> Result<()> {
+pub fn subcmd_search(query: String, tag: Option<String>, format: Option<String>) -> Result<()> {
     if query.trim().is_empty() {
         anyhow::bail!("Search query cannot be empty");
     }
@@ -47,7 +43,9 @@ pub fn subcmd_search(
         let matches = name.to_lowercase().contains(&query_lower)
             || proj.path.to_lowercase().contains(&query_lower)
             || proj.project_type.to_lowercase().contains(&query_lower)
-            || project_tags.iter().any(|t| t.to_lowercase().contains(&query_lower));
+            || project_tags
+                .iter()
+                .any(|t| t.to_lowercase().contains(&query_lower));
 
         if matches {
             results.push((proj, project_tags));

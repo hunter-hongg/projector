@@ -50,10 +50,7 @@ impl TagsIndex {
     }
 
     pub fn paths_for_tag(&self, tag: &str) -> Vec<String> {
-        self.tags
-            .get(tag)
-            .cloned()
-            .unwrap_or_default()
+        self.tags.get(tag).cloned().unwrap_or_default()
     }
 
     pub fn add_tag(&mut self, path: &str, tag: &str) {

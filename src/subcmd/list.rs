@@ -28,10 +28,7 @@ pub fn subcmd_list(dir: Option<String>, tag: Option<String>) -> Result<()> {
     if let Some(ref tag_name) = tag_display {
         println!(
             "{}",
-            color::info(&format!(
-                "listing directories with tag '{}'...",
-                tag_name
-            ))
+            color::info(&format!("listing directories with tag '{}'...", tag_name))
         );
     } else {
         println!("{}", color::info("listing directories..."));
@@ -84,10 +81,7 @@ pub fn subcmd_list(dir: Option<String>, tag: Option<String>) -> Result<()> {
     {
         println!(
             "  {}",
-            color::yellow(&format!(
-                "No projects with tag '{}' found.",
-                tag_name
-            ))
+            color::yellow(&format!("No projects with tag '{}' found.", tag_name))
         );
     }
 

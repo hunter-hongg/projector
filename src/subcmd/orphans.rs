@@ -5,11 +5,7 @@ use anyhow::Result;
 use crate::color;
 use crate::snapshot::{ProjectSnapshot, SnapshotStore};
 
-pub fn subcmd_orphans(
-    days: u32,
-    all: bool,
-    format: Option<String>,
-) -> Result<()> {
+pub fn subcmd_orphans(days: u32, all: bool, format: Option<String>) -> Result<()> {
     let format = format.unwrap_or_default();
     if !format.is_empty() && format != "json" {
         anyhow::bail!("Unsupported format: '{}'. Use 'json'.", format);

@@ -74,10 +74,10 @@ pub fn subcmd_deps(
     };
 
     if format == "json" {
-            print_json_all(&deps)?;
-        } else {
-            print_all(&deps);
-        }
+        print_json_all(&deps)?;
+    } else {
+        print_all(&deps);
+    }
 
     Ok(())
 }
@@ -202,7 +202,10 @@ fn print_all(deps: &[analyzer::DependencyEntry]) {
 
     let mut by_project: HashMap<String, Vec<&analyzer::DependencyEntry>> = HashMap::new();
     for d in deps {
-        by_project.entry(d.project_path.clone()).or_default().push(d);
+        by_project
+            .entry(d.project_path.clone())
+            .or_default()
+            .push(d);
     }
 
     for (path, project_deps) in &by_project {
@@ -250,7 +253,10 @@ fn print_json_all(deps: &[analyzer::DependencyEntry]) -> Result<()> {
 
     let mut by_project: HashMap<String, Vec<&analyzer::DependencyEntry>> = HashMap::new();
     for d in deps {
-        by_project.entry(d.project_path.clone()).or_default().push(d);
+        by_project
+            .entry(d.project_path.clone())
+            .or_default()
+            .push(d);
     }
 
     let projects_json: Vec<serde_json::Value> = by_project
