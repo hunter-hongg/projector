@@ -3,9 +3,9 @@ use std::path::Path;
 use anyhow::Result;
 use chrono::Utc;
 
-use crate::analyzer;
 use crate::color;
 use crate::config::Config;
+use crate::git;
 use crate::snapshot::SnapshotStore;
 
 pub fn subcmd_brief(days: u32, format: Option<String>) -> Result<()> {
@@ -76,7 +76,7 @@ pub fn subcmd_brief(days: u32, format: Option<String>) -> Result<()> {
         if !dir.exists() {
             continue;
         }
-        if let Ok(Some(count)) = analyzer::count_commits_since(dir, days)
+        if let Ok(Some(count)) = git::count_commits_since(dir, days)
             && count > 0
         {
             let name = proj

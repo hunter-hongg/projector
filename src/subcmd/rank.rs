@@ -2,8 +2,8 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::analyzer;
 use crate::color;
+use crate::git;
 use crate::snapshot::SnapshotStore;
 
 const VALID_METRICS: &[&str] = &["health", "loc", "activity", "age", "commits"];
@@ -58,7 +58,7 @@ pub fn subcmd_rank(
             "loc" => format!("{}", proj.lines_of_code),
             "activity" => {
                 let count = if dir.exists() {
-                    analyzer::count_commits_since(dir, 30)
+                    git::count_commits_since(dir, 30)
                         .ok()
                         .flatten()
                         .unwrap_or(0)
@@ -74,7 +74,7 @@ pub fn subcmd_rank(
             }
             "commits" => {
                 let count = if dir.exists() {
-                    analyzer::count_commits(dir)
+                    git::count_commits(dir)
                         .ok()
                         .flatten()
                         .map(|s| s.total)

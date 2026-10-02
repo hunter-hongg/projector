@@ -3,10 +3,10 @@ use std::path::Path;
 use anyhow::Result;
 use chrono::Utc;
 
-use crate::analyzer;
 use crate::color;
 use crate::config::Config;
 use crate::snapshot::{ScanSnapshot, SnapshotStore, format_health_deductions};
+use crate::{detect, health};
 
 pub fn subcmd_scan(dir: Option<String>) -> Result<()> {
     let config = Config::load()?;
@@ -20,9 +20,9 @@ pub fn subcmd_scan(dir: Option<String>) -> Result<()> {
     let stale_threshold = config.report.stale_threshold_days;
     let mut projects = Vec::new();
 
-    let (project_dirs, _) = analyzer::classify_dirs(dir_path, true)?;
+    let (project_dirs, _) = detect::classify_dirs(dir_path, true)?;
     for path in project_dirs {
-        if let Some(snapshot) = analyzer::analyze_project(&path, stale_threshold)? {
+        if let Some(snapshot) = health::analyze_project(&path, stale_threshold)? {
             projects.push(snapshot);
         }
     }

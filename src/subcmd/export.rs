@@ -1,9 +1,9 @@
 use anyhow::Result;
 
-use crate::analyzer;
 use crate::config::Config;
 use crate::export_template::{self, DashboardData, DashboardProject, RankItem, TypeDistItem};
 use crate::snapshot::SnapshotStore;
+use crate::statistics;
 
 fn ensure_parent_dir(path: &str) -> Result<()> {
     if let Some(parent) = std::path::Path::new(path).parent() {
@@ -13,7 +13,7 @@ fn ensure_parent_dir(path: &str) -> Result<()> {
 }
 
 fn build_dashboard_data(latest: &crate::snapshot::ScanSnapshot, config: &Config) -> DashboardData {
-    let stats = analyzer::compute_stats(latest, config.report.stale_threshold_days);
+    let stats = statistics::compute_stats(latest, config.report.stale_threshold_days);
 
     let type_dist: Vec<TypeDistItem> = stats
         .type_distribution

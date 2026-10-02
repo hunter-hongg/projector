@@ -3,9 +3,9 @@ use std::path::Path;
 use anyhow::Result;
 use chrono::{TimeZone, Utc};
 
-use crate::analyzer;
 use crate::color;
 use crate::snapshot::SnapshotStore;
+use crate::{detect, git};
 
 pub fn subcmd_activity(days: u32, project: Option<String>, format: Option<String>) -> Result<()> {
     let format = format.unwrap_or_default();
@@ -43,19 +43,19 @@ pub fn subcmd_activity(days: u32, project: Option<String>, format: Option<String
             continue;
         }
 
-        let project_type = analyzer::ProjectType::detect(dir)
+        let project_type = detect::ProjectType::detect(dir)
             .ok()
             .map(|t| t.as_str().to_string())
             .unwrap_or_default();
 
-        let stats = match analyzer::count_commits(dir) {
+        let stats = match git::count_commits(dir) {
             Ok(Some(s)) => s,
             _ => {
                 continue;
             }
         };
 
-        let recent = analyzer::count_commits_since(dir, days)
+        let recent = git::count_commits_since(dir, days)
             .ok()
             .flatten()
             .unwrap_or(0);

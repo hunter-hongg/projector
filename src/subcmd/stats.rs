@@ -1,9 +1,9 @@
 use anyhow::Result;
 
-use crate::analyzer::{self, ProjectStats};
 use crate::color;
 use crate::config::Config;
 use crate::snapshot::SnapshotStore;
+use crate::statistics::{self, ProjectStats};
 
 pub fn subcmd_stats(format: Option<String>) -> Result<()> {
     let config = Config::load()?;
@@ -20,7 +20,7 @@ pub fn subcmd_stats(format: Option<String>) -> Result<()> {
         }
     };
 
-    let stats = analyzer::compute_stats(&latest, config.report.stale_threshold_days);
+    let stats = statistics::compute_stats(&latest, config.report.stale_threshold_days);
 
     if fmt == "json" {
         print_stats_json(&stats);
@@ -164,7 +164,7 @@ mod tests {
     fn test_stats_json_output_not_crash() {
         let p = make_project(85, 500);
         let snap = make_scan(vec![p]);
-        let stats = analyzer::compute_stats(&snap, 90);
+        let stats = statistics::compute_stats(&snap, 90);
         print_stats_json(&stats);
     }
 }

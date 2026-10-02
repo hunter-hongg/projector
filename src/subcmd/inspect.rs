@@ -3,10 +3,10 @@ use std::path::Path;
 use anyhow::Result;
 use chrono::TimeZone;
 
-use crate::analyzer;
 use crate::color;
 use crate::config::Config;
 use crate::snapshot::{ProjectSnapshot, format_health_deductions};
+use crate::{detect, git, health, metrics};
 
 pub fn subcmd_inspect(path: Option<String>, format: Option<String>) -> Result<()> {
     let config = Config::load()?;
@@ -37,12 +37,12 @@ pub fn subcmd_inspect(path: Option<String>, format: Option<String>) -> Result<()
 
 fn analyze_project_on_demand(dir: &Path, config: &Config, quiet: bool) -> Result<ProjectSnapshot> {
     let stale_threshold = config.report.stale_threshold_days;
-    let project_type = analyzer::ProjectType::detect(dir)?;
+    let project_type = detect::ProjectType::detect(dir)?;
     let is_git = dir.join(".git").exists();
-    let loc = analyzer::estimate_loc(dir);
+    let loc = metrics::estimate_loc(dir);
 
     if !is_git {
-        let ftd = analyzer::file_type_distribution(dir);
+        let ftd = metrics::file_type_distribution(dir);
         if !quiet {
             println!("{}", color::info("Not a Git repository — file info only"));
             println!();
@@ -51,10 +51,10 @@ fn analyze_project_on_demand(dir: &Path, config: &Config, quiet: bool) -> Result
         return Ok(basic_snapshot(dir, &project_type, loc));
     }
 
-    let git = match analyzer::git_health(dir)? {
+    let git = match git::git_health(dir)? {
         Some(g) => g,
         None => {
-            let ftd = analyzer::file_type_distribution(dir);
+            let ftd = metrics::file_type_distribution(dir);
             if !quiet {
                 println!("  {}", color::info("Instant analysis (no snapshot found)"));
                 print_project_info(dir, &project_type, loc, &ftd);
@@ -63,7 +63,7 @@ fn analyze_project_on_demand(dir: &Path, config: &Config, quiet: bool) -> Result
         }
     };
 
-    let health_score = analyzer::compute_health_score(
+    let health_score = health::compute_health_score(
         git.is_dirty,
         git.unpushed_commits,
         git.last_commit_date,
@@ -102,7 +102,7 @@ fn analyze_project_on_demand(dir: &Path, config: &Config, quiet: bool) -> Result
     })
 }
 
-fn basic_snapshot(dir: &Path, project_type: &analyzer::ProjectType, loc: u32) -> ProjectSnapshot {
+fn basic_snapshot(dir: &Path, project_type: &detect::ProjectType, loc: u32) -> ProjectSnapshot {
     ProjectSnapshot {
         path: dir.to_string_lossy().to_string(),
         project_type: project_type.as_str().to_string(),
@@ -118,9 +118,9 @@ fn basic_snapshot(dir: &Path, project_type: &analyzer::ProjectType, loc: u32) ->
 
 fn print_project_info(
     dir: &Path,
-    project_type: &analyzer::ProjectType,
+    project_type: &detect::ProjectType,
     loc: u32,
-    ftd: &analyzer::FileTypeDistribution,
+    ftd: &metrics::FileTypeDistribution,
 ) {
     println!("  Path:    {}", color::cyan(&dir.to_string_lossy()));
     println!("  Type:    {}", project_type.as_str());
@@ -136,15 +136,15 @@ fn print_project_info(
 
 fn print_full_project_info(
     dir: &Path,
-    project_type: &analyzer::ProjectType,
-    git: &analyzer::GitHealth,
+    project_type: &detect::ProjectType,
+    git: &git::GitHealth,
     health_score: u8,
     loc: u32,
     stale_threshold: u32,
 ) -> Result<()> {
-    let commit_stats = analyzer::count_commits(dir)?;
-    let ftd = analyzer::file_type_distribution(dir);
-    let extra = analyzer::git_extra_health(dir)?;
+    let commit_stats = git::count_commits(dir)?;
+    let ftd = metrics::file_type_distribution(dir);
+    let extra = git::git_extra_health(dir)?;
 
     println!("  Path:     {}", color::cyan(&dir.to_string_lossy()));
     println!("  Type:     {}", project_type.as_str());
@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn test_basic_snapshot_construction() {
         let dir = Path::new("/tmp");
-        let pt = analyzer::ProjectType::Unknown;
+        let pt = detect::ProjectType::Unknown;
         let snap = basic_snapshot(dir, &pt, 42);
         assert_eq!(snap.path, "/tmp");
         assert_eq!(snap.project_type, "Unknown");

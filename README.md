@@ -1,71 +1,71 @@
 # 🔦 Projector
 
-> 个人项目统计工具
+> Personal project statistics tool
 
 [![Crates.io](https://img.shields.io/crates/v/projector.svg)](https://crates.io/crates/projector)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ---
 
-## 安装
+## Install
 
 ```bash
 cargo install projector
 ```
 
-## 使用
+## Usage
 
 ```bash
-# 列出目录下的项目
+# List projects in a directory
 projector list [dir]
 
-# 扫描项目并保存快照
+# Scan projects and save a snapshot
 projector scan [dir]
 
-# 显示健康仪表盘
+# Show the health dashboard
 projector report
 
-# 显示与上次快照的差异
+# Show the diff against the previous snapshot
 projector report --diff
 
-# 输出 JSON/Markdown 格式
+# Output JSON / Markdown format
 projector report -f json
 projector report -f md
 
-# 查看当前配置
+# Show the current config
 projector config
 
-# 修改配置
+# Change config
 projector config set scan.default_path ~/projects
 projector config set report.stale_threshold_days 60
 ```
 
-## 命令
+## Commands
 
-完整使用手册见 [USAGE.md](USAGE.md)。
+Full manual: [USAGE.md](USAGE.md).
 
-| 命令 | 说明 |
-|------|------|
-| `list [dir] [--tag]` | 列出目录下的项目 |
-| `scan [dir]` | 扫描项目，保存快照到 `~/.projector/snapshots/` |
-| `report [--diff] [-f json\|md]` | 显示健康仪表盘，支持排序、筛选、差异 |
-| `activity [--days] [--project]` | 查看项目提交活动统计 |
-| `brief [--days]` | 生成项目简报（总数、健康分布、活跃项目） |
-| `deps [path] [--shared]` | 分析项目依赖关系（Cargo / npm / go / Python） |
-| `orphans [--days] [--all]` | 查找孤立项目（无远程 + 长期无活动） |
-| `rank [--by] [--top]` | 按健康分 / LOC / 活动度 / 项目年龄 / 提交数排序 |
-| `search <query> [--tag]` | 搜索项目（名称、路径、类型、标签） |
-| `size [path] [--top] [--deep]` | 分析目录大小 |
-| `config [set <key> <value>]` | 查看 / 修改配置 |
-| `inspect [path]` | 深度分析单个项目 |
-| `stats` | 全局统计数据 |
-| `trend [path] [--metric]` | 跨快照趋势图（ASCII） |
-| `completion <shell>` | 生成 shell 自动补全脚本 |
-| `export html [-o]` | 导出 HTML 仪表盘 |
-| `snapshot prune [--keep] [--dry-run]` | 快照管理（清理旧快照） |
-| `tag list\|set\|rm\|clear` | 项目管理标签 |
+| Command | Description |
+|---------|-------------|
+| `list [dir] [--tag]` | List projects in a directory |
+| `scan [dir]` | Scan projects and save a snapshot to `~/.projector/snapshots/` |
+| `report [--diff] [-f json\|md]` | Health dashboard with sorting, filtering, diff |
+| `activity [--days] [--project]` | Commit activity stats per project |
+| `brief [--days]` | Project brief (total, health distribution, active projects) |
+| `deps [path] [--shared]` | Dependency analysis (Cargo / npm / go / Python) |
+| `orphans [--days] [--all]` | Find orphan projects (no remote + inactive) |
+| `rank [--by] [--top]` | Rank by health / LOC / activity / age / commits |
+| `search <query> [--tag]` | Search projects (name, path, type, tags) |
+| `size [path] [--top] [--deep]` | Analyze directory sizes |
+| `config [set <key> <value>]` | View / change config |
+| `inspect [path]` | Deep analysis of a single project |
+| `stats` | Global statistics |
+| `trend [path] [--metric]` | Cross-snapshot trend chart (ASCII) |
+| `completion <shell>` | Generate shell completion scripts |
+| `export html [-o]` | Export HTML dashboard |
+| `snapshot prune [--keep] [--dry-run]` | Snapshot management (prune old snapshots) |
+| `tag list\|set\|rm\|clear` | Project tag management |
 
-## 配置
+## Config
 
 `~/.projector/config.toml`
 
@@ -83,43 +83,43 @@ keep_count = 30
 health_threshold = 40
 ```
 
-| 键 | 类型 | 默认值 | 说明 |
-|----|------|--------|------|
-| `scan.default_path` | string | `.` | `scan` 的默认扫描目录 |
-| `report.stale_threshold_days` | number | 90 | 超过此天数无提交视为 stale |
-| `snapshot.keep_count` | number | 30 | `snapshot prune` 默认保留的快照数 |
-| `alert.health_threshold` | number | 40 | 扫描时健康分低于此值发出警告 |
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `scan.default_path` | string | `.` | Default scan directory for `scan` |
+| `report.stale_threshold_days` | number | 90 | Days without commits to be considered stale |
+| `snapshot.keep_count` | number | 30 | Snapshots kept by `snapshot prune` by default |
+| `alert.health_threshold` | number | 40 | Warn when a scanned project's health is below this |
 
-## 健康分公式
+## Health Score
 
-基础 100 分，按风险因素扣减：
+Starts at 100 and deducts for risk factors:
 
-- **-15** — 超过 `stale_threshold_days`（默认 90 天）无提交 (stale)
-- **-10** — 工作区有未提交修改 (dirty)
-- **-5 × N** — 有未推送的提交（每 5 个提交扣 5 分）
-- **-10** — 文件最后修改在 60 天前
-- **-5** — 代码行数 < 100（可能是废弃脚手架）
+- **-15** — no commits for `stale_threshold_days` (default 90)
+- **-10** — dirty working tree
+- **-5 × N** — unpushed commits (5 points per 5 commits)
+- **-10** — files last modified over 60 days ago
+- **-5** — fewer than 100 lines of code (possibly abandoned scaffold)
 
-结果限制在 0–100。终端输出按颜色分类：≥80 绿色、50–79 黄色、<50 红色。
+Clamped to 0–100. Terminal output is color-coded: ≥80 green, 50–79 yellow, <50 red.
 
-## 存储路径
+## Storage Paths
 
-| 文件 | 路径 |
+| Item | Path |
 |------|------|
-| 配置 | `~/.projector/config.toml` |
-| 快照 | `~/.projector/snapshots/{YYYYMMDD_HHMMSS}.json` |
-| 标签 | `~/.projector/tags.toml` |
+| Config | `~/.projector/config.toml` |
+| Snapshots | `~/.projector/snapshots/{YYYYMMDD_HHMMSS}.json` |
+| Tags | `~/.projector/tags.toml` |
 
-## 开发
+## Development
 
 ```bash
-cargo build        # 开发构建
-cargo test         # 运行测试（82 个单元测试）
+cargo build        # dev build
+cargo test         # run tests (82 unit tests)
 cargo build --release
 ```
 
-Rust edition 2024（MSRV ≥ 1.85）。依赖：`anyhow`、`chrono`、`clap`、`clap_complete`、`git2`、`serde`、`serde_json`、`toml`。
+Rust edition 2024 (MSRV ≥ 1.85). Dependencies: `anyhow`, `chrono`, `clap`, `clap_complete`, `git2`, `serde`, `serde_json`, `toml`.
 
-## 许可证
+## License
 
 MIT © hunter-hongg

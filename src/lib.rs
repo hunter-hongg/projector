@@ -1,8 +1,14 @@
-pub mod analyzer;
+pub mod chart;
 pub mod color;
 pub mod command;
 pub mod config;
+pub mod dependencies;
+pub mod detect;
 pub mod export_template;
+pub mod git;
+pub mod health;
+pub mod metrics;
 pub mod snapshot;
+pub mod statistics;
 pub mod subcmd;
 pub mod tags;

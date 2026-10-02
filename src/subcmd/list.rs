@@ -3,15 +3,15 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::analyzer;
 use crate::color;
+use crate::detect;
 use crate::tags::TagsIndex;
 
 pub fn subcmd_list(dir: Option<String>, tag: Option<String>) -> Result<()> {
     let dir = dir.unwrap_or_else(|| ".".to_string());
     let dir_path = Path::new(&dir);
 
-    let (projects, others) = analyzer::classify_dirs(dir_path, false)?;
+    let (projects, others) = detect::classify_dirs(dir_path, false)?;
 
     let tags_index = TagsIndex::load()?;
 
@@ -37,7 +37,7 @@ pub fn subcmd_list(dir: Option<String>, tag: Option<String>) -> Result<()> {
     println!("{}", color::green("Projects:"));
 
     for p in &filtered {
-        let project_type = analyzer::ProjectType::detect(p)?;
+        let project_type = detect::ProjectType::detect(p)?;
         let type_str = project_type.as_str();
         let display_type = if type_str == "Unknown" {
             color::red("Unknown project")

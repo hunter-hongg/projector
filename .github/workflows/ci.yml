@@ -13,9 +13,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: [rustfmt, clippy]
-      - name: 格式检查
+      - name: Format check
         run: cargo fmt --check
-      - name: 静态检查
+      - name: Lint
         run: cargo clippy --all-targets -- -D warnings
-      - name: 测试
+      - name: Test
         run: cargo test

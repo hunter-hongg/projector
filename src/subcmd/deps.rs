@@ -3,8 +3,8 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::analyzer;
 use crate::color;
+use crate::dependencies;
 use crate::snapshot::SnapshotStore;
 
 pub fn subcmd_deps(
@@ -24,7 +24,7 @@ pub fn subcmd_deps(
             if !p_path.exists() {
                 anyhow::bail!("Path '{}' does not exist", p);
             }
-            analyzer::parse_dependencies(p_path)
+            dependencies::parse_dependencies(p_path)
         }
         None => {
             let latest = match SnapshotStore::load_latest()? {
@@ -42,7 +42,7 @@ pub fn subcmd_deps(
             for proj in &latest.projects {
                 let dir = Path::new(&proj.path);
                 if dir.exists() {
-                    all_deps.extend(analyzer::parse_dependencies(dir));
+                    all_deps.extend(dependencies::parse_dependencies(dir));
                 }
             }
             all_deps
@@ -89,8 +89,8 @@ struct SharedDep {
     projects: Vec<String>,
 }
 
-fn find_shared(deps: &[analyzer::DependencyEntry]) -> Vec<SharedDep> {
-    let mut by_name: HashMap<&str, Vec<&analyzer::DependencyEntry>> = HashMap::new();
+fn find_shared(deps: &[dependencies::DependencyEntry]) -> Vec<SharedDep> {
+    let mut by_name: HashMap<&str, Vec<&dependencies::DependencyEntry>> = HashMap::new();
     for d in deps {
         by_name.entry(&d.name).or_default().push(d);
     }
@@ -127,7 +127,7 @@ fn find_shared(deps: &[analyzer::DependencyEntry]) -> Vec<SharedDep> {
     result
 }
 
-fn print_shared(shared: &[SharedDep], all: &[analyzer::DependencyEntry]) {
+fn print_shared(shared: &[SharedDep], all: &[dependencies::DependencyEntry]) {
     let project_count = count_projects(all);
 
     println!();
@@ -162,7 +162,7 @@ fn print_shared(shared: &[SharedDep], all: &[analyzer::DependencyEntry]) {
     }
 }
 
-fn print_json_shared(shared: &[SharedDep], all: &[analyzer::DependencyEntry]) -> Result<()> {
+fn print_json_shared(shared: &[SharedDep], all: &[dependencies::DependencyEntry]) -> Result<()> {
     let shared_json: Vec<serde_json::Value> = shared
         .iter()
         .map(|s| {
@@ -190,7 +190,7 @@ fn print_json_shared(shared: &[SharedDep], all: &[analyzer::DependencyEntry]) ->
     Ok(())
 }
 
-fn print_all(deps: &[analyzer::DependencyEntry]) {
+fn print_all(deps: &[dependencies::DependencyEntry]) {
     let project_count = count_projects(deps);
 
     println!();
@@ -200,7 +200,7 @@ fn print_all(deps: &[analyzer::DependencyEntry]) {
     );
     println!("  ========================================");
 
-    let mut by_project: HashMap<String, Vec<&analyzer::DependencyEntry>> = HashMap::new();
+    let mut by_project: HashMap<String, Vec<&dependencies::DependencyEntry>> = HashMap::new();
     for d in deps {
         by_project
             .entry(d.project_path.clone())
@@ -247,11 +247,11 @@ fn print_all(deps: &[analyzer::DependencyEntry]) {
     }
 }
 
-fn print_json_all(deps: &[analyzer::DependencyEntry]) -> Result<()> {
+fn print_json_all(deps: &[dependencies::DependencyEntry]) -> Result<()> {
     let total_projects = count_projects(deps);
     let unique_deps_count = count_unique(deps);
 
-    let mut by_project: HashMap<String, Vec<&analyzer::DependencyEntry>> = HashMap::new();
+    let mut by_project: HashMap<String, Vec<&dependencies::DependencyEntry>> = HashMap::new();
     for d in deps {
         by_project
             .entry(d.project_path.clone())
@@ -294,14 +294,14 @@ fn print_json_all(deps: &[analyzer::DependencyEntry]) -> Result<()> {
     Ok(())
 }
 
-fn count_projects(deps: &[analyzer::DependencyEntry]) -> usize {
+fn count_projects(deps: &[dependencies::DependencyEntry]) -> usize {
     let mut paths: Vec<&str> = deps.iter().map(|d| d.project_path.as_str()).collect();
     paths.sort();
     paths.dedup();
     paths.len()
 }
 
-fn count_unique(deps: &[analyzer::DependencyEntry]) -> usize {
+fn count_unique(deps: &[dependencies::DependencyEntry]) -> usize {
     let mut names: Vec<&str> = deps.iter().map(|d| d.name.as_str()).collect();
     names.sort();
     names.dedup();

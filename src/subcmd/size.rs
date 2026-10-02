@@ -1,8 +1,8 @@
 use anyhow::Result;
 use std::path::Path;
 
-use crate::analyzer;
 use crate::color;
+use crate::metrics;
 use crate::snapshot::SnapshotStore;
 
 pub fn subcmd_size(
@@ -24,16 +24,16 @@ pub fn subcmd_size(
         if deep {
             print_deep_breakdown(dir, &fmt)?;
         } else {
-            let size = analyzer::calc_dir_size(dir, true);
+            let size = metrics::calc_dir_size(dir, true);
             if fmt == "json" {
                 let json = serde_json::json!({
                     "path": p,
                     "size": size,
-                    "size_human": analyzer::human_size(size),
+                    "size_human": metrics::human_size(size),
                 });
                 println!("{}", serde_json::to_string_pretty(&json)?);
             } else {
-                println!("  {}: {}", color::cyan(&p), analyzer::human_size(size));
+                println!("  {}: {}", color::cyan(&p), metrics::human_size(size));
             }
         }
         return Ok(());
@@ -54,7 +54,7 @@ pub fn subcmd_size(
     for proj in &latest.projects {
         let dir = Path::new(&proj.path);
         if dir.exists() {
-            let size = analyzer::calc_dir_size(dir, true);
+            let size = metrics::calc_dir_size(dir, true);
             entries.push((proj.path.clone(), size));
         }
     }
@@ -72,7 +72,7 @@ pub fn subcmd_size(
                 serde_json::json!({
                     "path": path,
                     "size": size,
-                    "size_human": analyzer::human_size(*size),
+                    "size_human": metrics::human_size(*size),
                 })
             })
             .collect();
@@ -92,7 +92,7 @@ pub fn subcmd_size(
             println!(
                 "  {:max_name$}  {}",
                 color::cyan(name),
-                analyzer::human_size(*size),
+                metrics::human_size(*size),
                 max_name = max_name
             );
         }
@@ -103,7 +103,7 @@ pub fn subcmd_size(
 }
 
 fn print_deep_breakdown(dir: &Path, fmt: &str) -> Result<()> {
-    let total = analyzer::calc_dir_size(dir, false);
+    let total = metrics::calc_dir_size(dir, false);
     let source = dir_size_by_extensions(
         dir,
         &[
@@ -120,7 +120,7 @@ fn print_deep_breakdown(dir: &Path, fmt: &str) -> Result<()> {
         let json = serde_json::json!({
             "path": dir.to_string_lossy(),
             "total": total,
-            "total_human": analyzer::human_size(total),
+            "total_human": metrics::human_size(total),
             "breakdown": {
                 "source": source,
                 "deps": deps,
@@ -134,11 +134,11 @@ fn print_deep_breakdown(dir: &Path, fmt: &str) -> Result<()> {
             "  Deep breakdown for {}",
             color::cyan(&dir.to_string_lossy())
         );
-        println!("    Total: {}", analyzer::human_size(total));
-        println!("    Source code:  {}", analyzer::human_size(source));
-        println!("    Dependencies: {}", analyzer::human_size(deps));
-        println!("    Git objects:  {}", analyzer::human_size(git));
-        println!("    Other:        {}", analyzer::human_size(other));
+        println!("    Total: {}", metrics::human_size(total));
+        println!("    Source code:  {}", metrics::human_size(source));
+        println!("    Dependencies: {}", metrics::human_size(deps));
+        println!("    Git objects:  {}", metrics::human_size(git));
+        println!("    Other:        {}", metrics::human_size(other));
     }
 
     Ok(())
@@ -177,7 +177,7 @@ fn dir_size_by_name(dir: &Path, names: &[&str]) -> u64 {
             let path = entry.path();
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if names.contains(&name) && path.is_dir() {
-                total += analyzer::calc_dir_size(&path, false);
+                total += metrics::calc_dir_size(&path, false);
             }
         }
     }

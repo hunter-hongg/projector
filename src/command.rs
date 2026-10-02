@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Parser)]
-#[command(name = "projector", version, about = "统计个人项目并提供分析", long_about = None)]
+#[command(name = "projector", version, about = "Analyze and manage your personal projects", long_about = None)]
 pub struct Projector {
     #[command(subcommand)]
     pub command: Commands,

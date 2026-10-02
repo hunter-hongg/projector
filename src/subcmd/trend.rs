@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::analyzer::{self, TrendPoint};
+use crate::chart::{self, TrendPoint};
 use crate::color;
 use crate::snapshot::SnapshotStore;
 
@@ -110,7 +110,7 @@ pub fn subcmd_trend(
     }
     println!();
 
-    let chart = analyzer::draw_ascii_chart(&points, 60, 12);
+    let chart = chart::draw_ascii_chart(&points, 60, 12);
     for line in &chart {
         println!("  {}", line);
     }
