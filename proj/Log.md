@@ -63,3 +63,10 @@
 - Ran `cargo fmt` and fixed clippy warnings
 - Split `analyzer.rs` into focused modules (detect / git / metrics / health / statistics / chart / dependencies)
 - Unified the project language to English (docs, CLI text, comments)
+
+## 2026-10-02
+
+- Added `schema_version` to snapshots with serde defaults, so adding a snapshot field no longer breaks older files on disk
+- Added `projector snapshot migrate` to persist the backfill for legacy snapshots
+- Implemented the documented-but-missing `scan.max_depth` config key
+- `scan`/`list` now discover nested repositories; each project records its `depth`

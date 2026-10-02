@@ -15,6 +15,14 @@ pub struct Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanConfig {
     pub default_path: String,
+    /// How many levels below the scan root to look for git repositories.
+    /// `1` is the legacy one-level behaviour, `0` means unlimited.
+    #[serde(default = "default_max_depth")]
+    pub max_depth: u32,
+}
+
+fn default_max_depth() -> u32 {
+    1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,6 +59,7 @@ impl Default for Config {
         Self {
             scan: ScanConfig {
                 default_path: ".".to_string(),
+                max_depth: default_max_depth(),
             },
             report: ReportConfig {
                 stale_threshold_days: 90,
@@ -98,6 +107,11 @@ impl Config {
     pub fn set(&mut self, key: &str, value: &str) -> Result<()> {
         match key {
             "scan.default_path" => self.scan.default_path = value.to_string(),
+            "scan.max_depth" => {
+                self.scan.max_depth = value
+                    .parse()
+                    .map_err(|_| anyhow::anyhow!("max_depth must be a number"))?;
+            }
             "report.stale_threshold_days" => {
                 self.report.stale_threshold_days = value
                     .parse()
@@ -131,6 +145,7 @@ mod tests {
     fn test_config_default() {
         let config = Config::default();
         assert_eq!(config.scan.default_path, ".");
+        assert_eq!(config.scan.max_depth, 1);
         assert_eq!(config.report.stale_threshold_days, 90);
         assert_eq!(config.snapshot.keep_count, 30);
         assert_eq!(config.alert.health_threshold, 40);
@@ -182,6 +197,38 @@ mod tests {
         let mut config = Config::default();
         let result = config.set("report.stale_threshold_days", "not_a_number");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_config_set_max_depth() {
+        let mut config = Config::default();
+        config.set("scan.max_depth", "3").unwrap();
+        assert_eq!(config.scan.max_depth, 3);
+    }
+
+    #[test]
+    fn test_config_set_max_depth_zero_unlimited() {
+        let mut config = Config::default();
+        config.set("scan.max_depth", "0").unwrap();
+        assert_eq!(config.scan.max_depth, 0);
+    }
+
+    #[test]
+    fn test_config_set_max_depth_non_number() {
+        let mut config = Config::default();
+        assert!(config.set("scan.max_depth", "deep").is_err());
+    }
+
+    #[test]
+    fn test_config_toml_without_max_depth_still_loads() {
+        let toml_str = r#"[scan]
+default_path = "."
+
+[report]
+stale_threshold_days = 90
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.scan.max_depth, 1);
     }
 
     #[test]

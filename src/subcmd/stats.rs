@@ -142,6 +142,7 @@ mod tests {
             timestamp: chrono::Utc::now().naive_utc(),
             scanned_path: ".".to_string(),
             projects,
+            schema_version: crate::snapshot::SCHEMA_VERSION,
         }
     }
 
@@ -157,6 +158,7 @@ mod tests {
             last_modified_date: now,
             lines_of_code: loc,
             health_score: health,
+            depth: 1,
         }
     }
 

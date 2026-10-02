@@ -177,35 +177,79 @@ pub fn is_git_repo(path: &Path) -> bool {
     path.join(".git").exists()
 }
 
-/// Walk `dir`'s subdirectories and classify each as a git project or not.
-/// When `skip_hidden=true`, directories starting with `.` are skipped.
-pub fn classify_dirs(
-    dir: &Path,
-    skip_hidden: bool,
-) -> Result<(Vec<std::path::PathBuf>, Vec<std::path::PathBuf>)> {
+/// Directories never descended into while classifying, besides dotfiles.
+pub const SKIP_DIR_NAMES: &[&str] = &["node_modules", "target"];
+
+/// Discovered projects as `(path, depth)` plus the plain directories inspected
+/// but not classified as projects.
+pub type ClassifiedDirs = (Vec<(std::path::PathBuf, u32)>, Vec<std::path::PathBuf>);
+
+/// Hard ceiling on recursion, guarding against pathological or looping trees
+/// when `max_depth` is set to 0 (unlimited).
+const DEPTH_CEILING: usize = 32;
+
+/// Walk `dir` and classify its subdirectories as git projects or plain
+/// directories, descending up to `max_depth` levels (`0` = unlimited).
+///
+/// Returns projects as `(path, depth)` where depth `1` is a direct child of
+/// `dir`, plus the plain directories that were inspected but are not projects.
+/// A discovered repo is not descended into, so nested repos inside a repo are
+/// not reported. Symlinked directories are classified but never descended into,
+/// so a link cycle cannot drive the walk. When `skip_hidden` is true, directories
+/// starting with `.` are ignored at every level.
+pub fn classify_dirs(dir: &Path, skip_hidden: bool, max_depth: u32) -> Result<ClassifiedDirs> {
     let mut projects = Vec::new();
     let mut others = Vec::new();
+    let max_depth = match max_depth {
+        0 => DEPTH_CEILING,
+        n => (n as usize).min(DEPTH_CEILING),
+    };
 
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if !path.is_dir() {
+    classify_walk(dir, 1, max_depth, skip_hidden, &mut projects, &mut others)?;
+
+    Ok((projects, others))
+}
+
+fn classify_walk(
+    dir: &Path,
+    depth: usize,
+    max_depth: usize,
+    skip_hidden: bool,
+    projects: &mut Vec<(std::path::PathBuf, u32)>,
+    others: &mut Vec<std::path::PathBuf>,
+) -> Result<()> {
+    let mut entries: Vec<_> = fs::read_dir(dir)?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|path| path.is_dir())
+        .collect();
+    entries.sort();
+
+    for path in entries {
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if skip_hidden && name.starts_with('.') {
             continue;
         }
-        if skip_hidden {
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if name.starts_with('.') {
-                continue;
-            }
+        if SKIP_DIR_NAMES.contains(&name) {
+            continue;
         }
+
+        // Symlinks are classified but never descended into, so a link cycle
+        // cannot drive the walk.
+        let link = path.is_symlink();
+
         if is_git_repo(&path) {
-            projects.push(path);
-        } else {
-            others.push(path);
+            projects.push((path, depth as u32));
+            continue;
+        }
+
+        others.push(path.clone());
+        if !link && depth < max_depth {
+            classify_walk(&path, depth + 1, max_depth, skip_hidden, projects, others)?;
         }
     }
 
-    Ok((projects, others))
+    Ok(())
 }
 
 #[cfg(test)]
@@ -254,5 +298,162 @@ mod tests {
         let pt = ProjectType::detect(&dir).unwrap();
         assert_eq!(pt, ProjectType::Unknown);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Build an isolated scratch tree; each test owns its own name so parallel
+    /// runs cannot collide.
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("projector_test_classify_{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    fn git_repo(dir: &Path) {
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+    }
+
+    fn names_at_depth(found: &[(std::path::PathBuf, u32)], depth: u32) -> Vec<String> {
+        let mut v: Vec<String> = found
+            .iter()
+            .filter(|(_, d)| *d == depth)
+            .map(|(p, _)| {
+                p.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string()
+            })
+            .collect();
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn test_classify_depth_one_finds_only_direct_children() {
+        let root = scratch("depth1");
+        git_repo(&root.join("app"));
+        std::fs::create_dir_all(root.join("mono").join("inner")).unwrap();
+        git_repo(&root.join("mono").join("inner"));
+
+        let (found, others) = classify_dirs(&root, true, 1).unwrap();
+        assert_eq!(names_at_depth(&found, 1), vec!["app"]);
+        assert!(
+            names_at_depth(&found, 2).is_empty(),
+            "max_depth=1 must not descend"
+        );
+        assert!(
+            others.iter().any(|p| p.file_name().unwrap() == "mono"),
+            "non-project child is still reported"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_classify_depth_two_finds_nested_repo() {
+        let root = scratch("depth2");
+        git_repo(&root.join("app"));
+        git_repo(&root.join("mono").join("inner"));
+
+        let (found, _) = classify_dirs(&root, true, 2).unwrap();
+        assert_eq!(names_at_depth(&found, 1), vec!["app"]);
+        assert_eq!(names_at_depth(&found, 2), vec!["inner"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_classify_depth_zero_is_unlimited_but_bounded() {
+        let root = scratch("depth_unlimited");
+        let mut cur = root.clone();
+        for _ in 0..40 {
+            cur = cur.join("nest");
+        }
+        git_repo(&cur);
+
+        let (found, _) = classify_dirs(&root, true, 0).unwrap();
+        // The deep repo is past the ceiling, so the walk stops without hanging.
+        assert!(found.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_classify_does_not_descend_into_a_repo() {
+        let root = scratch("no_descend");
+        git_repo(&root.join("outer"));
+        git_repo(&root.join("outer").join("vendored"));
+
+        let (found, _) = classify_dirs(&root, true, 5).unwrap();
+        assert_eq!(names_at_depth(&found, 1), vec!["outer"]);
+        assert_eq!(found.len(), 1, "repos inside a repo are not reported");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_classify_skips_node_modules_and_target() {
+        let root = scratch("skipdirs");
+        git_repo(&root.join("node_modules").join("dep"));
+        git_repo(&root.join("target").join("build"));
+        git_repo(&root.join("real"));
+
+        let (found, others) = classify_dirs(&root, false, 5).unwrap();
+        assert_eq!(names_at_depth(&found, 1), vec!["real"]);
+        assert!(others.is_empty(), "skipped dirs are not listed either");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_classify_skip_hidden_controls_descending() {
+        let root = scratch("hidden");
+        git_repo(&root.join(".secrets").join("repo"));
+        git_repo(&root.join("visible"));
+
+        let (skipped, _) = classify_dirs(&root, true, 5).unwrap();
+        assert_eq!(names_at_depth(&skipped, 1), vec!["visible"]);
+        assert_eq!(skipped.len(), 1);
+
+        let (included, _) = classify_dirs(&root, false, 5).unwrap();
+        assert_eq!(names_at_depth(&included, 1), vec!["visible"]);
+        assert_eq!(names_at_depth(&included, 2), vec!["repo"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_classify_depth_reported_matches_nesting() {
+        let root = scratch("depth_values");
+        git_repo(&root.join("a").join("b").join("c"));
+
+        let (found, _) = classify_dirs(&root, true, 3).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].1, 3);
+        assert_eq!(found[0].0, root.join("a").join("b").join("c"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_classify_empty_dir() {
+        let root = scratch("empty");
+        std::fs::create_dir_all(&root).unwrap();
+        let (found, others) = classify_dirs(&root, true, 3).unwrap();
+        assert!(found.is_empty());
+        assert!(others.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A symlinked directory pointing back at the root would recurse forever if
+    /// the walk followed it.
+    #[cfg(unix)]
+    #[test]
+    fn test_classify_does_not_follow_symlink_cycles() {
+        let root = scratch("symlink");
+        std::fs::create_dir_all(&root).unwrap();
+        git_repo(&root.join("real"));
+        std::os::unix::fs::symlink(&root, root.join("loopback")).unwrap();
+
+        let (found, others) = classify_dirs(&root, true, 5).unwrap();
+        assert_eq!(names_at_depth(&found, 1), vec!["real"]);
+        assert_eq!(found.len(), 1, "the cycle yields no extra projects");
+        assert!(
+            others.iter().any(|p| p.file_name().unwrap() == "loopback"),
+            "the symlink itself is still listed as a plain directory"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

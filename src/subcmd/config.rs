@@ -9,6 +9,15 @@ pub fn subcmd_config_show() -> Result<()> {
     println!();
     println!("  scan.default_path = {}", config.scan.default_path);
     println!(
+        "  scan.max_depth = {}{}",
+        config.scan.max_depth,
+        if config.scan.max_depth == 0 {
+            " (unlimited)"
+        } else {
+            ""
+        }
+    );
+    println!(
         "  report.stale_threshold_days = {}",
         config.report.stale_threshold_days
     );

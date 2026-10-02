@@ -467,6 +467,7 @@ mod tests {
             last_modified_date: now,
             lines_of_code: loc,
             health_score: health,
+            depth: 1,
         }
     }
 

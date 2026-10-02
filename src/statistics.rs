@@ -125,7 +125,7 @@ pub fn compute_stats(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::snapshot::ScanSnapshot;
+    use crate::snapshot::{SCHEMA_VERSION, ScanSnapshot};
     use chrono::Utc;
 
     #[test]
@@ -134,6 +134,7 @@ mod tests {
             timestamp: Utc::now().naive_utc(),
             scanned_path: ".".to_string(),
             projects: vec![],
+            schema_version: SCHEMA_VERSION,
         };
         let stats = compute_stats(&snapshot, 90);
         assert_eq!(stats.total_projects, 0);
@@ -156,11 +157,13 @@ mod tests {
             last_modified_date: now,
             lines_of_code: 500,
             health_score: 85,
+            depth: 1,
         };
         let snapshot = ScanSnapshot {
             timestamp: now,
             scanned_path: ".".to_string(),
             projects: vec![p],
+            schema_version: SCHEMA_VERSION,
         };
         let stats = compute_stats(&snapshot, 90);
         assert_eq!(stats.total_projects, 1);
@@ -184,6 +187,7 @@ mod tests {
                 last_modified_date: now,
                 lines_of_code: 100,
                 health_score: 100,
+                depth: 1,
             },
             ProjectSnapshot {
                 path: "/b".to_string(),
@@ -195,6 +199,7 @@ mod tests {
                 last_modified_date: now,
                 lines_of_code: 200,
                 health_score: 80,
+                depth: 1,
             },
             ProjectSnapshot {
                 path: "/c".to_string(),
@@ -206,12 +211,14 @@ mod tests {
                 last_modified_date: now,
                 lines_of_code: 300,
                 health_score: 60,
+                depth: 1,
             },
         ];
         let snapshot = ScanSnapshot {
             timestamp: now,
             scanned_path: ".".to_string(),
             projects,
+            schema_version: SCHEMA_VERSION,
         };
         let stats = compute_stats(&snapshot, 90);
         assert_eq!(stats.total_projects, 3);

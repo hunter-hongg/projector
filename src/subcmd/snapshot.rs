@@ -61,6 +61,58 @@ pub fn subcmd_snapshot_prune(keep: Option<u32>, dry_run: bool) -> Result<()> {
     Ok(())
 }
 
+/// Rewrite snapshots left behind by an older projector at the current schema.
+///
+/// Loading old snapshots already works without this (every field has a serde
+/// default); migrating just persists the backfill so files stop being patched
+/// in memory on every read.
+pub fn subcmd_snapshot_migrate() -> Result<()> {
+    let report = SnapshotStore::migrate_all()?;
+
+    if report.is_empty() {
+        println!("{}", color::info("No snapshots found to migrate."));
+        return Ok(());
+    }
+
+    if report.migrated.is_empty() {
+        println!(
+            "{}",
+            color::info(&format!(
+                "All {} snapshot(s) are already at schema version {}.",
+                report.current,
+                crate::snapshot::SCHEMA_VERSION
+            ))
+        );
+    } else {
+        println!(
+            "{}",
+            color::info(&format!(
+                "Migrated {} snapshot(s) to schema version {} ({} already current).",
+                report.migrated.len(),
+                crate::snapshot::SCHEMA_VERSION,
+                report.current
+            ))
+        );
+        for path in &report.migrated {
+            let name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown");
+            println!("  {}", color::green(name));
+        }
+    }
+
+    for path in &report.failed {
+        let name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+        println!("  {}", color::red(&format!("unreadable: {name}")));
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

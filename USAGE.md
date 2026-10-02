@@ -31,7 +31,7 @@ cargo install projector
 | [`inspect`](#inspect) | Deep analysis of a single project |
 | [`stats`](#stats) | Global statistics |
 | [`trend`](#trend) | Cross-snapshot trend chart (ASCII) |
-| [`snapshot`](#snapshot) | Snapshot management (prune old snapshots) |
+| [`snapshot`](#snapshot) | Snapshot management (prune old snapshots, migrate schema) |
 | [`export`](#export) | Export HTML dashboard |
 | [`completion`](#completion) | Generate shell completion scripts |
 
@@ -48,7 +48,9 @@ projector list [dir] [--tag <tag>]
 - `dir` — target directory, default `.`
 - `--tag <tag>` — only show projects with the given tag
 
-Output: each project's name, detected language type, last modified time, and tags (if any). Dates older than 30 days are printed in red.
+Output: each project's name, detected language type, last modified time, and tags (if any). Dates older than 30 days are printed in red. Projects found below the first level also show their `depth`.
+
+The search depth follows the config key `scan.max_depth` (default 1 = direct children only).
 
 ```bash
 projector list                         # list projects in the current directory
@@ -67,6 +69,16 @@ projector scan [dir]
 ```
 
 - `dir` — target directory, defaults to config `scan.default_path`
+
+Discovery depth is controlled by `scan.max_depth` (default `1`):
+
+| `max_depth` | Behaviour |
+|-------------|-----------|
+| `1` | Only direct children of `dir` — the historical behaviour |
+| `2`+ | Descend up to N levels to find nested repositories |
+| `0` | Unlimited (hard-capped at 32 levels as a safety guard) |
+
+A discovered repository is **not** descended into, so nested repos inside a repo (vendored checkouts, submodules) are not reported as separate projects. `node_modules/` and `target/` are never entered, and symlinks are classified but never descended into, so link cycles cannot hang the walk.
 
 During scan:
 - skip hidden directories (starting with `.`)
@@ -135,6 +147,7 @@ projector config set <key> <value>   # change a config entry
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `scan.default_path` | string | `.` | Default scan directory for `scan` |
+| `scan.max_depth` | number | 1 | Levels below the scan root to search for repos (`0` = unlimited) |
 | `report.stale_threshold_days` | number | 90 | Days without commits to be considered stale |
 | `snapshot.keep_count` | number | 30 | Snapshots kept by `snapshot prune` by default |
 | `alert.health_threshold` | number | 40 | Warn when a scanned project's health is below this |
@@ -142,6 +155,7 @@ projector config set <key> <value>   # change a config entry
 ```bash
 projector config set scan.default_path ~/projects
 projector config set report.stale_threshold_days 60
+projector config set scan.max_depth 2      # also find repos one level deeper
 ```
 
 Config file location: `~/.projector/config.toml`
@@ -434,17 +448,31 @@ Manage snapshot files.
 
 ```bash
 projector snapshot prune [--keep <N>] [--dry-run]
+projector snapshot migrate
 ```
+
+### `snapshot prune`
 
 | Option | Description |
 |--------|-------------|
 | `--keep <N>` | Keep the newest N snapshots, default from config `snapshot.keep_count` (30) |
 | `--dry-run` | Simulate; do not delete anything |
 
+### `snapshot migrate`
+
+Rewrite snapshot files written by an older projector so they carry the current
+`schema_version`.
+
+Loading old snapshots **works without migrating** — every snapshot field has a
+serde default, so missing fields are backfilled in memory on each read.
+Running `migrate` just persists that backfill once, so files stop being patched
+on every load. Files that cannot be parsed are reported and left untouched.
+
 ```bash
 projector snapshot prune               # keep the newest 30
 projector snapshot prune --keep 10     # keep 10
 projector snapshot prune --dry-run     # preview what would be deleted
+projector snapshot migrate             # bring old snapshots up to the current schema
 ```
 
 ---
@@ -510,6 +538,12 @@ Clamped to **0–100**. Terminal output is color-coded:
 - `report --diff` compares the last two snapshots
 - `trend` uses all historical snapshots
 - `snapshot prune` removes old snapshots
+- Each file records a `schema_version`; older files stay readable because new
+  fields are added with serde defaults and backfilled by `snapshot migrate`
+
+Each project entry stores: `path`, `project_type`, `git_branch`, `is_dirty`,
+`unpushed_commits`, `last_commit_date`, `last_modified_date`, `lines_of_code`,
+`health_score`, and `depth` (how far below the scanned root the repo was found).
 
 ---
 
@@ -529,6 +563,7 @@ A complete `~/.projector/config.toml`:
 ```toml
 [scan]
 default_path = "."
+max_depth = 1
 
 [report]
 stale_threshold_days = 90

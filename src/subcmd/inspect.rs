@@ -99,6 +99,7 @@ fn analyze_project_on_demand(dir: &Path, config: &Config, quiet: bool) -> Result
         last_modified_date: chrono::NaiveDateTime::default(),
         lines_of_code: loc,
         health_score,
+        depth: 0,
     })
 }
 
@@ -113,6 +114,7 @@ fn basic_snapshot(dir: &Path, project_type: &detect::ProjectType, loc: u32) -> P
         last_modified_date: chrono::NaiveDateTime::default(),
         lines_of_code: loc,
         health_score: 0,
+        depth: 0,
     }
 }
 

@@ -10,8 +10,9 @@ use crate::tags::TagsIndex;
 pub fn subcmd_list(dir: Option<String>, tag: Option<String>) -> Result<()> {
     let dir = dir.unwrap_or_else(|| ".".to_string());
     let dir_path = Path::new(&dir);
+    let max_depth = crate::config::Config::load()?.scan.max_depth;
 
-    let (projects, others) = detect::classify_dirs(dir_path, false)?;
+    let (projects, others) = detect::classify_dirs(dir_path, false, max_depth)?;
 
     let tags_index = TagsIndex::load()?;
 
@@ -19,7 +20,7 @@ pub fn subcmd_list(dir: Option<String>, tag: Option<String>) -> Result<()> {
     let filtered: Vec<_> = if let Some(ref tag_name) = tag {
         projects
             .into_iter()
-            .filter(|p| tags_index.has_tag(&p.to_string_lossy(), tag_name))
+            .filter(|(p, _)| tags_index.has_tag(&p.to_string_lossy(), tag_name))
             .collect()
     } else {
         projects
@@ -36,7 +37,7 @@ pub fn subcmd_list(dir: Option<String>, tag: Option<String>) -> Result<()> {
     println!();
     println!("{}", color::green("Projects:"));
 
-    for p in &filtered {
+    for (p, depth) in &filtered {
         let project_type = detect::ProjectType::detect(p)?;
         let type_str = project_type.as_str();
         let display_type = if type_str == "Unknown" {
@@ -64,10 +65,15 @@ pub fn subcmd_list(dir: Option<String>, tag: Option<String>) -> Result<()> {
         };
 
         println!(
-            "project {}: {}, last modified: {}{}",
+            "project {}: {}, last modified: {}{}{}",
             color::cyan(&p.to_string_lossy()),
             display_type,
             display_last,
+            if *depth > 1 {
+                color::blue(&format!(", depth {}", depth))
+            } else {
+                String::new()
+            },
             if tag_str.is_empty() {
                 String::new()
             } else {

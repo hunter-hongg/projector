@@ -38,6 +38,7 @@ projector config
 # Change config
 projector config set scan.default_path ~/projects
 projector config set report.stale_threshold_days 60
+projector config set scan.max_depth 2
 ```
 
 ## Commands
@@ -62,7 +63,7 @@ Full manual: [USAGE.md](USAGE.md).
 | `trend [path] [--metric]` | Cross-snapshot trend chart (ASCII) |
 | `completion <shell>` | Generate shell completion scripts |
 | `export html [-o]` | Export HTML dashboard |
-| `snapshot prune [--keep] [--dry-run]` | Snapshot management (prune old snapshots) |
+| `snapshot prune\|migrate` | Snapshot management (prune old snapshots, migrate schema) |
 | `tag list\|set\|rm\|clear` | Project tag management |
 
 ## Config
@@ -72,6 +73,7 @@ Full manual: [USAGE.md](USAGE.md).
 ```toml
 [scan]
 default_path = "."
+max_depth = 1
 
 [report]
 stale_threshold_days = 90
@@ -86,6 +88,7 @@ health_threshold = 40
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `scan.default_path` | string | `.` | Default scan directory for `scan` |
+| `scan.max_depth` | number | 1 | Levels below the scan root to search (`0` = unlimited) |
 | `report.stale_threshold_days` | number | 90 | Days without commits to be considered stale |
 | `snapshot.keep_count` | number | 30 | Snapshots kept by `snapshot prune` by default |
 | `alert.health_threshold` | number | 40 | Warn when a scanned project's health is below this |
@@ -107,14 +110,14 @@ Clamped to 0–100. Terminal output is color-coded: ≥80 green, 50–79 yellow,
 | Item | Path |
 |------|------|
 | Config | `~/.projector/config.toml` |
-| Snapshots | `~/.projector/snapshots/{YYYYMMDD_HHMMSS}.json` |
+| Snapshots | `~/.projector/snapshots/{YYYYMMDD_HHMMSS}.json` (versioned by `schema_version`) |
 | Tags | `~/.projector/tags.toml` |
 
 ## Development
 
 ```bash
 cargo build        # dev build
-cargo test         # run tests (82 unit tests)
+cargo test         # run tests (106 unit tests)
 cargo build --release
 ```
 

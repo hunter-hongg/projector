@@ -5,7 +5,7 @@ use chrono::Utc;
 
 use crate::color;
 use crate::config::Config;
-use crate::snapshot::{ScanSnapshot, SnapshotStore, format_health_deductions};
+use crate::snapshot::{SCHEMA_VERSION, ScanSnapshot, SnapshotStore, format_health_deductions};
 use crate::{detect, health};
 
 pub fn subcmd_scan(dir: Option<String>) -> Result<()> {
@@ -20,9 +20,9 @@ pub fn subcmd_scan(dir: Option<String>) -> Result<()> {
     let stale_threshold = config.report.stale_threshold_days;
     let mut projects = Vec::new();
 
-    let (project_dirs, _) = detect::classify_dirs(dir_path, true)?;
-    for path in project_dirs {
-        if let Some(snapshot) = health::analyze_project(&path, stale_threshold)? {
+    let (project_dirs, _) = detect::classify_dirs(dir_path, true, config.scan.max_depth)?;
+    for (path, depth) in project_dirs {
+        if let Some(snapshot) = health::analyze_project(&path, stale_threshold, depth)? {
             projects.push(snapshot);
         }
     }
@@ -30,6 +30,7 @@ pub fn subcmd_scan(dir: Option<String>) -> Result<()> {
     let snapshot = ScanSnapshot {
         timestamp: Utc::now().naive_utc(),
         scanned_path: dir,
+        schema_version: SCHEMA_VERSION,
         projects,
     };
 

@@ -45,7 +45,11 @@ pub fn compute_health_score(
     score.clamp(0, 100) as u8
 }
 
-pub fn analyze_project(dir: &Path, stale_threshold_days: u32) -> Result<Option<ProjectSnapshot>> {
+pub fn analyze_project(
+    dir: &Path,
+    stale_threshold_days: u32,
+    depth: u32,
+) -> Result<Option<ProjectSnapshot>> {
     let project_type = ProjectType::detect(dir)?;
 
     let git = match git_health(dir)? {
@@ -88,6 +92,7 @@ pub fn analyze_project(dir: &Path, stale_threshold_days: u32) -> Result<Option<P
         last_modified_date,
         lines_of_code,
         health_score,
+        depth,
     }))
 }
 

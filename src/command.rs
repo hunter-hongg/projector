@@ -155,6 +155,8 @@ pub enum SnapshotAction {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Rewrite snapshots written by an older projector at the current schema
+    Migrate,
 }
 
 #[derive(Subcommand)]

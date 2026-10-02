@@ -24,14 +24,14 @@ cargo test
 - `src/main.rs` — clap derive dispatch to subcommands in `src/subcmd/`
 - `src/lib.rs` — public modules: chart / color / command / config / dependencies / detect / export_template / git / health / metrics / snapshot / statistics / subcmd / tags
 - `src/command.rs` — 18 subcommand definitions (list, scan, report, activity, brief, deps, orphans, rank, search, size, config, inspect, stats, trend, completion, export, snapshot, tag)
-- `src/detect.rs` — project type detection and directory classification
+- `src/detect.rs` — project type detection and directory classification (`classify_dirs` walks `scan.max_depth` levels, returns `(path, depth)`)
 - `src/git.rs` — git health, commit stats, extra git metrics
 - `src/metrics.rs` — LOC estimation, directory size, file type distribution
 - `src/health.rs` — health score calculation and single-project analysis
 - `src/statistics.rs` — aggregate statistics across snapshots
 - `src/chart.rs` — ASCII chart rendering
 - `src/dependencies.rs` — dependency parsing for Cargo / npm / go / Python
-- `src/snapshot.rs` — snapshot serialization/loading/diffing/pruning, JSON storage
+- `src/snapshot.rs` — snapshot serialization/loading/diffing/pruning/migrating, JSON storage versioned by `SCHEMA_VERSION`
 - `src/config.rs` — TOML config read/write, path `~/.projector/config.toml`
 - `src/tags.rs` — project tag management, TOML at `~/.projector/tags.toml`
 - `src/export_template.rs` — HTML dashboard template generation (self-contained, inline CSS)
@@ -40,7 +40,7 @@ cargo test
 ## Storage Paths
 
 - Config: `~/.projector/config.toml`
-- Snapshots: `~/.projector/snapshots/{YYYYMMDD_HHMMSS}.json`
+- Snapshots: `~/.projector/snapshots/{YYYYMMDD_HHMMSS}.json` (carries `schema_version`)
 - Tags: `~/.projector/tags.toml`
 
 ## Conventions

@@ -111,6 +111,12 @@ fn main() -> Result<()> {
             subcmd::snapshot::subcmd_snapshot_prune(keep, dry_run)?;
             Ok(())
         }
+        Commands::Snapshot {
+            action: SnapshotAction::Migrate,
+        } => {
+            subcmd::snapshot::subcmd_snapshot_migrate()?;
+            Ok(())
+        }
         Commands::Tag {
             action: TagAction::List { path },
         } => {
