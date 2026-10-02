@@ -2,4 +2,4 @@
 /release
 .codegraph/
 .omo/
-.codewhale/
+.codewhale/release_artifacts/
