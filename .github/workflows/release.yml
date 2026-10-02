@@ -1,0 +1,133 @@
+name: Release
+
+# Build release artifacts for every platform on every push to master, and publish
+# a GitHub Release (with the linux-x86_64 binary) whenever a `v*` tag is pushed.
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: auto
+
+jobs:
+  build:
+    name: Build (${{ matrix.artifact_suffix }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            rust_target: x86_64-unknown-linux-gnu
+            artifact_suffix: linux-x86_64
+          - os: ubuntu-22.04
+            rust_target: aarch64-unknown-linux-gnu
+            artifact_suffix: linux-aarch64
+          - os: macos-14
+            rust_target: x86_64-apple-darwin
+            artifact_suffix: macos-x86_64
+          - os: macos-14
+            rust_target: aarch64-apple-darwin
+            artifact_suffix: macos-aarch64
+          - os: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+            artifact_suffix: windows-x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets:
+            - ${{ matrix.rust_target }}
+
+      - name: Cross-compile release
+        run: rustup run stable cargo build --release --target ${{ matrix.rust_target }} --locked
+
+      - name: Strip binary (non-Windows)
+        if: runner.os != 'Windows'
+        run: strip "target/${{ matrix.rust_target }}/release/projector"
+
+      - name: Assemble artifact name
+        id: meta
+        shell: bash
+        run: |
+          # Tag name drives the release version; for master builds, fall back to a date-based version.
+          if [ -n "${GITHUB_REF_NAME:-}" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(date +%Y.%-m).0"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "suffix=${{ matrix.artifact_suffix }}" >> "$GITHUB_OUTPUT"
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          BIN="target/${{ matrix.rust_target }}/release/projector${{ runner.os == 'Windows' && '.exe' || '' }}"
+          NAME="projector-${{ steps.meta.outputs.version }}-${{ matrix.artifact_suffix }}"
+          mkdir -p dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "dist/${NAME}.zip" "$BIN"
+          else
+            mv "$BIN" "dist/${NAME}"
+            tar -czf "dist/${NAME}.tar.gz" -C dist "$(basename "$NAME")"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: projector-${{ matrix.artifact_suffix }}
+          path: dist/projector-${{ steps.meta.outputs.version }}-${{ matrix.artifact_suffix }}.*
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    # Only publish a GitHub Release when a `v*` tag is pushed.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release (linux-x86_64)
+        run: rustup run stable cargo build --release --locked
+
+      - name: Strip binary
+        run: strip target/release/projector
+
+      - name: Generate release notes
+        id: notes
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          {
+            echo "## What's changed"
+            echo
+            # Show commits since the previous tag, or since HEAD~50 as a fallback.
+            git log "$(git describe --tags --abbrev=0 2>/dev/null || echo HEAD~50)"..HEAD --format='- %s (%h)' | head -50
+          } > RELEASE_NOTES.md
+          echo "notes<<EOF" >> "$GITHUB_OUTPUT"
+          cat RELEASE_NOTES.md >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/release/projector
+          tag_name: ${{ github.ref_name }}
+          name: projector ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: false
