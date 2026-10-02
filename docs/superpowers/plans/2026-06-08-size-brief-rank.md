@@ -1,12 +1,14 @@
 # Size / Brief / Rank Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Status:** COMPLETE — all three subcommands, utilities, tests, USAGE.md docs, and CI checks are implemented and passing. This plan is retained for historical reference.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add three new subcommands — `projector size` (disk usage), `projector brief` (daily digest), `projector rank` (leaderboard).
 
-**Architecture:** Each subcommand gets its own file under `src/subcmd/`, registered in `command.rs` + `main.rs` dispatch. Shared logic (directory size calculation, human-readable formatting) added to `src/analyzer.rs` since filesystem walk utilities already live there.
+**Architecture:** Each subcommand gets its own file under `src/subcmd/`, registered in `command.rs` + `main.rs` dispatch. Shared logic (directory size calculation, human-readable formatting) added to `src/metrics.rs` since filesystem walk utilities already live there.
 
-**Tech Stack:** Rust, clap derive, existing `analyzer.rs` walk infrastructure, existing snapshot/config code.
+**Tech Stack:** Rust, clap derive, existing `metrics.rs` walk infrastructure, existing snapshot/config code.
 
 ---
 
@@ -14,7 +16,7 @@
 
 ```
 src/
-├── analyzer.rs              # + calc_dir_size(), human_size()
+├── metrics.rs              # calc_dir_size(), human_size(), estimate_loc(), file_type_distribution()
 ├── command.rs               # + Size, Brief, Rank enum variants
 ├── main.rs                  # + dispatch arms
 ├── subcmd/
@@ -26,16 +28,16 @@ src/
 
 ---
 
-### Task 1: Add `calc_dir_size()` and `human_size()` to analyzer.rs
+### Task 1: Add `calc_dir_size()` and `human_size()` to `metrics.rs` (post f8a98fe refactor, was analyzer.rs)
 
 **Files:**
-- Modify: `src/analyzer.rs` (after `estimate_loc`, around line 320)
-- Test: inline in `src/analyzer.rs` `#[cfg(test)] mod tests`
+- Modify: `src/metrics.rs` (after `estimate_loc`, around line 320)
+- Test: inline in `src/metrics.rs` `#[cfg(test)] mod tests`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```rust
-// Append to existing #[cfg(test)] mod tests at end of src/analyzer.rs
+// Append to existing #[cfg(test)] mod tests at end of src/metrics.rs
 
 #[test]
 fn test_human_size_bytes() {
@@ -94,12 +96,12 @@ fn test_calc_dir_size_deep_skips_hidden() {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
-Run: `cargo cooldown test test_human_size_bytes test_human_size_kb test_human_size_mb test_human_size_gb test_calc_dir_size_empty test_calc_dir_size_with_files test_calc_dir_size_deep_skips_hidden 2>&1 | head -30`
+Run: `cargo test test_human_size_bytes test_human_size_kb test_human_size_mb test_human_size_gb test_calc_dir_size_empty test_calc_dir_size_with_files test_calc_dir_size_deep_skips_hidden 2>&1 | head -30`
 Expected: each of the 7 tests shows FAIL (function not found)
 
-- [ ] **Step 3: Add `human_size()` function before line 304 (before `COUNTABLE_EXTENSIONS`)**
+- [x] **Step 3: Add `human_size()` function before line 304 (before `COUNTABLE_EXTENSIONS`)**
 
 ```rust
 pub fn human_size(bytes: u64) -> String {
@@ -119,7 +121,7 @@ pub fn human_size(bytes: u64) -> String {
 }
 ```
 
-- [ ] **Step 4: Add `calc_dir_size()` function after `human_size()`**
+- [x] **Step 4: Add `calc_dir_size()` function after `human_size()`**
 
 ```rust
 pub fn calc_dir_size(dir: &Path, skip_hidden: bool) -> u64 {
@@ -147,26 +149,27 @@ pub fn calc_dir_size(dir: &Path, skip_hidden: bool) -> u64 {
 }
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
-Run: `cargo cooldown test test_human_size_bytes test_human_size_kb test_human_size_mb test_human_size_gb test_calc_dir_size_empty test_calc_dir_size_with_files test_calc_dir_size_deep_skips_hidden 2>&1`
+Run: `cargo test test_human_size_bytes test_human_size_kb test_human_size_mb test_human_size_gb test_calc_dir_size_empty test_calc_dir_size_with_files test_calc_dir_size_deep_skips_hidden 2>&1`
 Expected: all 7 pass, overall `ok`
 
-- [ ] **Step 6: Run full existing test suite**
+- [x] **Step 6: Run full existing test suite**
 
-Run: `cargo cooldown test 2>&1`
+Run: `cargo test 2>&1`
 Expected: all existing tests still pass
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
-git add src/analyzer.rs
+git add src/metrics.rs
 git commit -m "feat: add calc_dir_size() and human_size() utilities"
 ```
 
 ---
 
 ### Task 2: Create `projector size` subcommand
+*[Implemented in commit `0917fc2`]*
 
 **Files:**
 - Create: `src/subcmd/size.rs`
@@ -175,12 +178,12 @@ git commit -m "feat: add calc_dir_size() and human_size() utilities"
 - Modify: `src/main.rs` (add dispatch arm)
 - Test: inline `#[cfg(test)]` in `src/subcmd/size.rs`
 
-- [ ] **Step 1: Write failing test in new file `src/subcmd/size.rs`**
+- [x] **Step 1: Write failing test in new file `src/subcmd/size.rs`**
 
 ```rust
 use anyhow::Result;
 
-use crate::analyzer;
+use crate::metrics;
 
 pub fn subcmd_size(
     path: Option<String>,
@@ -205,20 +208,20 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
-Run: `cargo cooldown test -p projector subcmd_size_invalid_format 2>&1 | head -20`
+Run: `cargo test -p projector subcmd_size_invalid_format 2>&1 | head -20`
 Expected: FAIL — will compile but test failure
 
 Wait — the stub returns Ok, so the test will fail. That's correct TDD: test demands error for invalid format but stub returns Ok.
 
-- [ ] **Step 3: Implement `subcmd_size` in `src/subcmd/size.rs`**
+- [x] **Step 3: Implement `subcmd_size` in `src/subcmd/size.rs`**
 
 ```rust
 use std::path::Path;
 use anyhow::Result;
 
-use crate::analyzer;
+use crate::metrics;
 use crate::color;
 use crate::snapshot::SnapshotStore;
 
@@ -241,16 +244,16 @@ pub fn subcmd_size(
         if deep {
             print_deep_breakdown(dir, &fmt)?;
         } else {
-            let size = analyzer::calc_dir_size(dir, true);
+            let size = metrics::calc_dir_size(dir, true);
             if fmt == "json" {
                 let json = serde_json::json!({
                     "path": p,
                     "size": size,
-                    "size_human": analyzer::human_size(size),
+                    "size_human": metrics::human_size(size),
                 });
                 println!("{}", serde_json::to_string_pretty(&json)?);
             } else {
-                println!("  {}: {}", color::cyan(&p), analyzer::human_size(size));
+                println!("  {}: {}", color::cyan(&p), metrics::human_size(size));
             }
         }
         return Ok(());
@@ -268,7 +271,7 @@ pub fn subcmd_size(
     for proj in &latest.projects {
         let dir = Path::new(&proj.path);
         if dir.exists() {
-            let size = analyzer::calc_dir_size(dir, true);
+            let size = metrics::calc_dir_size(dir, true);
             entries.push((proj.path.clone(), size));
         }
     }
@@ -284,7 +287,7 @@ pub fn subcmd_size(
             serde_json::json!({
                 "path": path,
                 "size": size,
-                "size_human": analyzer::human_size(*size),
+                "size_human": metrics::human_size(*size),
             })
         }).collect();
         println!("{}", serde_json::to_string_pretty(&json)?);
@@ -295,7 +298,7 @@ pub fn subcmd_size(
         let max_name = entries.iter().map(|(p, _)| p.split('/').next_back().unwrap_or(p).len()).max().unwrap_or(20).min(40);
         for (path, size) in &entries {
             let name = path.split('/').next_back().unwrap_or(path);
-            println!("  {:max_name$}  {}", color::cyan(name), analyzer::human_size(*size), max_name = max_name);
+            println!("  {:max_name$}  {}", color::cyan(name), metrics::human_size(*size), max_name = max_name);
         }
         println!();
     }
@@ -304,7 +307,7 @@ pub fn subcmd_size(
 }
 
 fn print_deep_breakdown(dir: &Path, fmt: &str) -> Result<()> {
-    let total = analyzer::calc_dir_size(dir, false);
+    let total = metrics::calc_dir_size(dir, false);
     let source = dir_size_by_extensions(dir, &["rs", "js", "ts", "jsx", "tsx", "go", "py", "java", "kt", "kts", "c", "h", "cpp", "hpp", "cc", "cxx", "ml", "mli", "dart", "toml", "json", "yaml", "yml", "md", "css", "html", "sh", "bash", "zsh", "fish"]);
     let deps = dir_size_by_name(dir, &["node_modules", "target"]);
     let git = dir_size_by_name(dir, &[".git"]);
@@ -314,7 +317,7 @@ fn print_deep_breakdown(dir: &Path, fmt: &str) -> Result<()> {
         let json = serde_json::json!({
             "path": dir.to_string_lossy(),
             "total": total,
-            "total_human": analyzer::human_size(total),
+            "total_human": metrics::human_size(total),
             "breakdown": {
                 "source": source,
                 "deps": deps,
@@ -325,11 +328,11 @@ fn print_deep_breakdown(dir: &Path, fmt: &str) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&json)?);
     } else {
         println!("  Deep breakdown for {}", color::cyan(&dir.to_string_lossy()));
-        println!("    Total: {}", analyzer::human_size(total));
-        println!("    Source code:  {}", analyzer::human_size(source));
-        println!("    Dependencies: {}", analyzer::human_size(deps));
-        println!("    Git objects:  {}", analyzer::human_size(git));
-        println!("    Other:        {}", analyzer::human_size(other));
+        println!("    Total: {}", metrics::human_size(total));
+        println!("    Source code:  {}", metrics::human_size(source));
+        println!("    Dependencies: {}", metrics::human_size(deps));
+        println!("    Git objects:  {}", metrics::human_size(git));
+        println!("    Other:        {}", metrics::human_size(other));
     }
 
     Ok(())
@@ -370,7 +373,7 @@ fn dir_size_by_name(dir: &Path, names: &[&str]) -> u64 {
             let path = entry.path();
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if names.contains(&name) && path.is_dir() {
-                total += analyzer::calc_dir_size(&path, false);
+                total += metrics::calc_dir_size(&path, false);
             }
         }
     }
@@ -428,19 +431,19 @@ mod tests {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
-Run: `cargo cooldown test -p projector test_subcmd_size_invalid_format test_dir_size_by_extensions_empty test_dir_size_by_name_found test_dir_size_by_name_not_found test_deep_breakdown 2>&1`
+Run: `cargo test -p projector test_subcmd_size_invalid_format test_dir_size_by_extensions_empty test_dir_size_by_name_found test_dir_size_by_name_not_found test_deep_breakdown 2>&1`
 Expected: all pass
 
-- [ ] **Step 5: Register module in `src/subcmd/mod.rs`**
+- [x] **Step 5: Register module in `src/subcmd/mod.rs`**
 
 ```rust
 pub mod size;
 ```
 Add between existing entries (alphabetical: after `search`/`scan`, before `snapshot`).
 
-- [ ] **Step 6: Add `Size` variant in `src/command.rs`**
+- [x] **Step 6: Add `Size` variant in `src/command.rs`**
 
 ```rust
     Size {
@@ -455,7 +458,7 @@ Add between existing entries (alphabetical: after `search`/`scan`, before `snaps
 ```
 Place after `Search` and before `Snapshot` in the `Commands` enum.
 
-- [ ] **Step 7: Add dispatch arm in `src/main.rs`**
+- [x] **Step 7: Add dispatch arm in `src/main.rs`**
 
 ```rust
         Commands::Size { path, top, deep, format } => {
@@ -465,17 +468,17 @@ Place after `Search` and before `Snapshot` in the `Commands` enum.
 ```
 Place after the `Search` arm and before `Config`.
 
-- [ ] **Step 8: Build and verify**
+- [x] **Step 8: Build and verify**
 
-Run: `cargo cooldown build 2>&1`
+Run: `cargo build 2>&1`
 Expected: compiles clean
 
-- [ ] **Step 9: Run full test suite**
+- [x] **Step 9: Run full test suite**
 
-Run: `cargo cooldown test 2>&1`
+Run: `cargo test 2>&1`
 Expected: all tests pass
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/subcmd/size.rs src/subcmd/mod.rs src/command.rs src/main.rs
@@ -485,6 +488,7 @@ git commit -m "feat: add projector size subcommand"
 ---
 
 ### Task 3: Create `projector brief` subcommand
+*[Implemented in commit `3df7824`]*
 
 **Files:**
 - Create: `src/subcmd/brief.rs`
@@ -493,7 +497,7 @@ git commit -m "feat: add projector size subcommand"
 - Modify: `src/main.rs` (add dispatch arm)
 - Test: inline `#[cfg(test)]` in `src/subcmd/brief.rs`
 
-- [ ] **Step 1: Write failing test skeleton**
+- [x] **Step 1: Write failing test skeleton**
 
 ```rust
 // src/subcmd/brief.rs — initial stub
@@ -517,12 +521,12 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
-Run: `cargo cooldown test -p projector test_brief_invalid_format 2>&1`
+Run: `cargo test -p projector test_brief_invalid_format 2>&1`
 Expected: FAIL
 
-- [ ] **Step 3: Implement `subcmd_brief` in `src/subcmd/brief.rs`**
+- [x] **Step 3: Implement `subcmd_brief` in `src/subcmd/brief.rs`**
 
 ```rust
 use std::path::Path;
@@ -530,7 +534,7 @@ use std::path::Path;
 use anyhow::Result;
 use chrono::Utc;
 
-use crate::analyzer;
+use crate::git;
 use crate::color;
 use crate::config::Config;
 use crate::snapshot::SnapshotStore;
@@ -580,7 +584,7 @@ pub fn subcmd_brief(days: u32, format: Option<String>) -> Result<()> {
         if !dir.exists() {
             continue;
         }
-        if let Ok(Some(count)) = analyzer::count_commits_since(dir, days) {
+        if let Ok(Some(count)) = git::count_commits_since(dir, days) {
             if count > 0 {
                 let name = proj.path.split('/').next_back().unwrap_or(&proj.path).to_string();
                 active.push((name, proj.project_type.clone(), count));
@@ -662,19 +666,19 @@ mod tests {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
-Run: `cargo cooldown test -p projector test_brief_invalid_format test_brief_graceful_no_snapshot 2>&1`
+Run: `cargo test -p projector test_brief_invalid_format test_brief_graceful_no_snapshot 2>&1`
 Expected: all pass
 
-- [ ] **Step 5: Register module in `src/subcmd/mod.rs`**
+- [x] **Step 5: Register module in `src/subcmd/mod.rs`**
 
 ```rust
 pub mod brief;
 ```
 Place alphabetically (after `activity`, before `completion`).
 
-- [ ] **Step 6: Add `Brief` variant in `src/command.rs`**
+- [x] **Step 6: Add `Brief` variant in `src/command.rs`**
 
 ```rust
     Brief {
@@ -686,7 +690,7 @@ Place alphabetically (after `activity`, before `completion`).
 ```
 Place after `Activity` and before `Completion`.
 
-- [ ] **Step 7: Add dispatch arm in `src/main.rs`**
+- [x] **Step 7: Add dispatch arm in `src/main.rs`**
 
 ```rust
         Commands::Brief { days, format } => {
@@ -695,17 +699,17 @@ Place after `Activity` and before `Completion`.
         }
 ```
 
-- [ ] **Step 8: Build and verify**
+- [x] **Step 8: Build and verify**
 
-Run: `cargo cooldown build 2>&1`
+Run: `cargo build 2>&1`
 Expected: compiles clean
 
-- [ ] **Step 9: Run full test suite**
+- [x] **Step 9: Run full test suite**
 
-Run: `cargo cooldown test 2>&1`
+Run: `cargo test 2>&1`
 Expected: all tests pass
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/subcmd/brief.rs src/subcmd/mod.rs src/command.rs src/main.rs
@@ -715,6 +719,7 @@ git commit -m "feat: add projector brief subcommand"
 ---
 
 ### Task 4: Create `projector rank` subcommand
+*[Implemented in commit `d61f354`]*
 
 **Files:**
 - Create: `src/subcmd/rank.rs`
@@ -723,7 +728,7 @@ git commit -m "feat: add projector brief subcommand"
 - Modify: `src/main.rs` (add dispatch arm)
 - Test: inline `#[cfg(test)]` in `src/subcmd/rank.rs`
 
-- [ ] **Step 1: Write failing test skeleton**
+- [x] **Step 1: Write failing test skeleton**
 
 ```rust
 // src/subcmd/rank.rs — initial stub
@@ -761,19 +766,19 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
-Run: `cargo cooldown test -p projector test_rank_invalid_format test_rank_invalid_by 2>&1`
+Run: `cargo test -p projector test_rank_invalid_format test_rank_invalid_by 2>&1`
 Expected: FAIL
 
-- [ ] **Step 3: Implement `subcmd_rank` in `src/subcmd/rank.rs`**
+- [x] **Step 3: Implement `subcmd_rank` in `src/subcmd/rank.rs`**
 
 ```rust
 use std::path::Path;
 
 use anyhow::Result;
 
-use crate::analyzer;
+use crate::git;
 use crate::color;
 use crate::snapshot::{ProjectSnapshot, SnapshotStore};
 
@@ -826,7 +831,7 @@ pub fn subcmd_rank(
             "loc" => format!("{}", proj.lines_of_code),
             "activity" => {
                 let count = if dir.exists() {
-                    analyzer::count_commits_since(dir, 30).ok().flatten().unwrap_or(0)
+                    git::count_commits_since(dir, 30).ok().flatten().unwrap_or(0)
                 } else {
                     0
                 };
@@ -839,7 +844,7 @@ pub fn subcmd_rank(
             }
             "commits" => {
                 let count = if dir.exists() {
-                    analyzer::count_commits(dir).ok().flatten().map(|s| s.total).unwrap_or(0)
+                    git::count_commits(dir).ok().flatten().map(|s| s.total).unwrap_or(0)
                 } else {
                     0
                 };
@@ -989,19 +994,19 @@ mod tests {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
-Run: `cargo cooldown test -p projector test_rank_invalid_format test_rank_invalid_by test_rank_graceful_no_snapshot test_valid_metrics_list 2>&1`
+Run: `cargo test -p projector test_rank_invalid_format test_rank_invalid_by test_rank_graceful_no_snapshot test_valid_metrics_list 2>&1`
 Expected: all pass
 
-- [ ] **Step 5: Register module in `src/subcmd/mod.rs`**
+- [x] **Step 5: Register module in `src/subcmd/mod.rs`**
 
 ```rust
 pub mod rank;
 ```
 Place alphabetically (after `orphans`, before `report`).
 
-- [ ] **Step 6: Add `Rank` variant in `src/command.rs`**
+- [x] **Step 6: Add `Rank` variant in `src/command.rs`**
 
 ```rust
     Rank {
@@ -1032,7 +1037,7 @@ Use `#[arg(long = "type")]`:
         type_filter: Option<String>,
 ```
 
-- [ ] **Step 7: Add dispatch arm in `src/main.rs`**
+- [x] **Step 7: Add dispatch arm in `src/main.rs`**
 
 ```rust
         Commands::Rank { by, reverse, type_filter, top, category, format } => {
@@ -1041,17 +1046,17 @@ Use `#[arg(long = "type")]`:
         }
 ```
 
-- [ ] **Step 8: Build and verify**
+- [x] **Step 8: Build and verify**
 
-Run: `cargo cooldown build 2>&1`
+Run: `cargo build 2>&1`
 Expected: compiles clean
 
-- [ ] **Step 9: Run full test suite**
+- [x] **Step 9: Run full test suite**
 
-Run: `cargo cooldown test 2>&1`
+Run: `cargo test 2>&1`
 Expected: all tests pass
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/subcmd/rank.rs src/subcmd/mod.rs src/command.rs src/main.rs
