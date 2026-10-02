@@ -1,5 +1,5 @@
 /target
 /release
 .codegraph/
+.codewhale/
 .omo/
-.codewhale/release_artifacts/
