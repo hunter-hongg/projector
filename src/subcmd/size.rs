@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::path::Path;
 
 use crate::color;
+use crate::format::OutputFormat;
 use crate::metrics;
 use crate::snapshot::SnapshotStore;
 
@@ -11,10 +12,7 @@ pub fn subcmd_size(
     deep: bool,
     format: Option<String>,
 ) -> Result<()> {
-    let fmt = format.unwrap_or_default();
-    if !fmt.is_empty() && fmt != "json" {
-        anyhow::bail!("Unsupported format: '{}'. Use 'json'.", fmt);
-    }
+    let fmt = OutputFormat::parse(format.as_deref(), &[OutputFormat::Json])?;
 
     if let Some(p) = path {
         let dir = Path::new(&p);
@@ -22,10 +20,10 @@ pub fn subcmd_size(
             anyhow::bail!("Path not found: {}", p);
         }
         if deep {
-            print_deep_breakdown(dir, &fmt)?;
+            print_deep_breakdown(dir, fmt)?;
         } else {
             let size = metrics::calc_dir_size(dir, true);
-            if fmt == "json" {
+            if fmt.is_json() {
                 let json = serde_json::json!({
                     "path": p,
                     "size": size,
@@ -65,7 +63,7 @@ pub fn subcmd_size(
         entries.truncate(n);
     }
 
-    if fmt == "json" {
+    if fmt.is_json() {
         let json: Vec<serde_json::Value> = entries
             .iter()
             .map(|(path, size)| {
@@ -102,7 +100,7 @@ pub fn subcmd_size(
     Ok(())
 }
 
-fn print_deep_breakdown(dir: &Path, fmt: &str) -> Result<()> {
+fn print_deep_breakdown(dir: &Path, fmt: OutputFormat) -> Result<()> {
     let total = metrics::calc_dir_size(dir, false);
     let source = dir_size_by_extensions(
         dir,
@@ -116,7 +114,7 @@ fn print_deep_breakdown(dir: &Path, fmt: &str) -> Result<()> {
     let git = dir_size_by_name(dir, &[".git"]);
     let other = total.saturating_sub(source + deps + git);
 
-    if fmt == "json" {
+    if fmt.is_json() {
         let json = serde_json::json!({
             "path": dir.to_string_lossy(),
             "total": total,

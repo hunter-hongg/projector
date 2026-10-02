@@ -2,12 +2,13 @@ use anyhow::Result;
 
 use crate::color;
 use crate::config::Config;
+use crate::format::OutputFormat;
 use crate::snapshot::SnapshotStore;
 use crate::statistics::{self, ProjectStats};
 
 pub fn subcmd_stats(format: Option<String>) -> Result<()> {
     let config = Config::load()?;
-    let fmt = format.unwrap_or_default();
+    let fmt = OutputFormat::parse(format.as_deref(), &[OutputFormat::Json])?;
 
     let latest = match SnapshotStore::load_latest()? {
         Some(s) => s,
@@ -22,7 +23,7 @@ pub fn subcmd_stats(format: Option<String>) -> Result<()> {
 
     let stats = statistics::compute_stats(&latest, config.report.stale_threshold_days);
 
-    if fmt == "json" {
+    if fmt.is_json() {
         print_stats_json(&stats);
     } else {
         print_stats_table(&stats);

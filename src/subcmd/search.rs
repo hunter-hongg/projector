@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 use crate::color;
+use crate::format::OutputFormat;
 use crate::snapshot::SnapshotStore;
 use crate::tags::TagsIndex;
 
@@ -9,10 +10,7 @@ pub fn subcmd_search(query: String, tag: Option<String>, format: Option<String>)
         anyhow::bail!("Search query cannot be empty");
     }
 
-    let format = format.unwrap_or_default();
-    if !format.is_empty() && format != "json" {
-        anyhow::bail!("Unsupported format: '{}'. Use 'json'.", format);
-    }
+    let format = OutputFormat::parse(format.as_deref(), &[OutputFormat::Json])?;
 
     let latest = match SnapshotStore::load_latest()? {
         Some(s) => s,
@@ -52,7 +50,7 @@ pub fn subcmd_search(query: String, tag: Option<String>, format: Option<String>)
         }
     }
 
-    if format == "json" {
+    if format.is_json() {
         let json_results: Vec<serde_json::Value> = results
             .iter()
             .map(|(p, tags)| {

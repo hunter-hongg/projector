@@ -2,7 +2,7 @@
 
 > Personal project statistics tool — scan git projects, analyze health, track trends
 
-Version: 0.1.0 | Config path: `~/.projector/config.toml` | Snapshot path: `~/.projector/snapshots/`
+Version: 0.2.0 | Config path: `~/.projector/config.toml` | Snapshot path: `~/.projector/snapshots/`
 
 ---
 
@@ -213,7 +213,7 @@ projector deps --project myapp                            # only projects named 
 projector deps --shared -f json                           # shared deps as JSON
 ```
 
-`--shared` output: for each shared dependency, show name, version, type, and the projects using it.
+`--shared` output: for each shared dependency, show name, version, type, and the projects using it. When projects pin **different version requirements** for the same dependency, it is flagged with `⚠ conflicting requirements`: for example `serde` with `1.0` in one project and `^2.0` in another. The JSON report carries `conflict`, the full `versions` list, and a `conflicts_count` summary.
 
 ---
 

@@ -5,6 +5,7 @@ pub mod config;
 pub mod dependencies;
 pub mod detect;
 pub mod export_template;
+pub mod format;
 pub mod git;
 pub mod health;
 pub mod metrics;

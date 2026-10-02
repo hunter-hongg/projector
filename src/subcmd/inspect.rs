@@ -5,6 +5,7 @@ use chrono::TimeZone;
 
 use crate::color;
 use crate::config::Config;
+use crate::format::OutputFormat;
 use crate::snapshot::{ProjectSnapshot, format_health_deductions};
 use crate::{detect, git, health, metrics};
 
@@ -17,18 +18,15 @@ pub fn subcmd_inspect(path: Option<String>, format: Option<String>) -> Result<()
         anyhow::bail!("Path not found: {}", path);
     }
 
-    let fmt = format.unwrap_or_default();
-    if !fmt.is_empty() && fmt != "json" {
-        anyhow::bail!("Unsupported format: '{}'. Use 'json'.", fmt);
-    }
+    let fmt = OutputFormat::parse(format.as_deref(), &[OutputFormat::Json])?;
 
     if !dir.is_dir() {
         anyhow::bail!("Path is not a directory: {}", path);
     }
 
-    let snapshot = analyze_project_on_demand(dir, &config, fmt == "json")?;
+    let snapshot = analyze_project_on_demand(dir, &config, fmt.is_json())?;
 
-    if fmt == "json" {
+    if fmt.is_json() {
         println!("{}", serde_json::to_string_pretty(&snapshot)?);
     }
 

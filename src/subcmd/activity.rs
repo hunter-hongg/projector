@@ -4,14 +4,12 @@ use anyhow::Result;
 use chrono::{TimeZone, Utc};
 
 use crate::color;
+use crate::format::OutputFormat;
 use crate::snapshot::SnapshotStore;
 use crate::{detect, git};
 
 pub fn subcmd_activity(days: u32, project: Option<String>, format: Option<String>) -> Result<()> {
-    let format = format.unwrap_or_default();
-    if !format.is_empty() && format != "json" {
-        anyhow::bail!("Unsupported format: '{}'. Use 'json'.", format);
-    }
+    let format = OutputFormat::parse(format.as_deref(), &[OutputFormat::Json])?;
 
     let projects = if let Some(ref p) = project {
         let dir = Path::new(p);
@@ -80,7 +78,7 @@ pub fn subcmd_activity(days: u32, project: Option<String>, format: Option<String
         }
     }
 
-    if format == "json" {
+    if format.is_json() {
         let json_projects: Vec<serde_json::Value> = project_activity
             .iter()
             .map(|a| {

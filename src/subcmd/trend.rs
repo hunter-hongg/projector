@@ -2,6 +2,7 @@ use anyhow::Result;
 
 use crate::chart::{self, TrendPoint};
 use crate::color;
+use crate::format::OutputFormat;
 use crate::snapshot::SnapshotStore;
 
 pub fn subcmd_trend(
@@ -10,7 +11,7 @@ pub fn subcmd_trend(
     metric: Option<String>,
     format: Option<String>,
 ) -> Result<()> {
-    let fmt = format.unwrap_or_default();
+    let fmt = OutputFormat::parse(format.as_deref(), &[OutputFormat::Json])?;
     let metric = metric.unwrap_or_else(|| "health".to_string());
 
     let snapshots = SnapshotStore::load_all()?;
@@ -83,7 +84,7 @@ pub fn subcmd_trend(
             .collect()
     };
 
-    if fmt == "json" {
+    if fmt.is_json() {
         let json: Vec<_> = points
             .iter()
             .map(|p| {

@@ -5,14 +5,12 @@ use chrono::Utc;
 
 use crate::color;
 use crate::config::Config;
+use crate::format::OutputFormat;
 use crate::git;
 use crate::snapshot::SnapshotStore;
 
 pub fn subcmd_brief(days: u32, format: Option<String>) -> Result<()> {
-    let fmt = format.unwrap_or_default();
-    if !fmt.is_empty() && fmt != "json" {
-        anyhow::bail!("Unsupported format: '{}'. Use 'json'.", fmt);
-    }
+    let fmt = OutputFormat::parse(format.as_deref(), &[OutputFormat::Json])?;
 
     let config = Config::load()?;
     let stale_threshold = config.report.stale_threshold_days;
@@ -90,7 +88,7 @@ pub fn subcmd_brief(days: u32, format: Option<String>) -> Result<()> {
     }
     active.sort_by_key(|(_, _, c)| std::cmp::Reverse(*c));
 
-    if fmt == "json" {
+    if fmt.is_json() {
         let json = serde_json::json!({
             "date": now.format("%Y-%m-%d").to_string(),
             "total_projects": total,

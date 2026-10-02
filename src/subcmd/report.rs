@@ -2,6 +2,7 @@ use anyhow::Result;
 
 use crate::color;
 use crate::config::Config;
+use crate::format::OutputFormat;
 use crate::snapshot::{ProjectSnapshot, SnapshotStore};
 
 pub fn subcmd_report(
@@ -12,10 +13,10 @@ pub fn subcmd_report(
 ) -> Result<()> {
     let config = Config::load()?;
     let stale_threshold = config.report.stale_threshold_days;
-    let format = format.unwrap_or_default();
-    if !format.is_empty() && format != "json" && format != "md" {
-        anyhow::bail!("Unsupported format: '{}'. Use 'json' or 'md'.", format);
-    }
+    let format = OutputFormat::parse(
+        format.as_deref(),
+        &[OutputFormat::Json, OutputFormat::Markdown],
+    )?;
 
     let latest = match SnapshotStore::load_latest()? {
         Some(s) => s,
@@ -38,7 +39,7 @@ pub fn subcmd_report(
         projects = apply_sort(projects, &s)?;
     }
 
-    if format == "json" {
+    if format.is_json() {
         let mut json = serde_json::to_value(&latest)?;
         if let Some(obj) = json.as_object_mut() {
             obj.insert("projects".to_string(), serde_json::to_value(&projects)?);
@@ -47,7 +48,7 @@ pub fn subcmd_report(
         return Ok(());
     }
 
-    if format == "md" {
+    if format.is_markdown() {
         println!("# Project Health Report");
         println!();
         println!(

@@ -3,13 +3,11 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::color;
+use crate::format::OutputFormat;
 use crate::snapshot::{ProjectSnapshot, SnapshotStore};
 
 pub fn subcmd_orphans(days: u32, all: bool, format: Option<String>) -> Result<()> {
-    let format = format.unwrap_or_default();
-    if !format.is_empty() && format != "json" {
-        anyhow::bail!("Unsupported format: '{}'. Use 'json'.", format);
-    }
+    let format = OutputFormat::parse(format.as_deref(), &[OutputFormat::Json])?;
 
     let latest = match SnapshotStore::load_latest()? {
         Some(s) => s,
@@ -46,7 +44,7 @@ pub fn subcmd_orphans(days: u32, all: bool, format: Option<String>) -> Result<()
         }
     }
 
-    if format == "json" {
+    if format.is_json() {
         let json_orphans: Vec<serde_json::Value> = orphan_projects
             .iter()
             .map(|p| {

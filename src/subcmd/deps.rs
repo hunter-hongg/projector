@@ -5,6 +5,7 @@ use anyhow::Result;
 
 use crate::color;
 use crate::dependencies;
+use crate::format::OutputFormat;
 use crate::snapshot::SnapshotStore;
 
 pub fn subcmd_deps(
@@ -13,10 +14,7 @@ pub fn subcmd_deps(
     project: Option<String>,
     format: Option<String>,
 ) -> Result<()> {
-    let format = format.unwrap_or_default();
-    if !format.is_empty() && format != "json" {
-        anyhow::bail!("Unsupported format: '{}'. Use 'json'.", format);
-    }
+    let format = OutputFormat::parse(format.as_deref(), &[OutputFormat::Json])?;
 
     let deps = match path {
         Some(p) => {
@@ -51,7 +49,7 @@ pub fn subcmd_deps(
 
     if shared {
         let shared_deps = find_shared(&deps);
-        if format == "json" {
+        if format.is_json() {
             print_json_shared(&shared_deps, &deps)?;
         } else {
             print_shared(&shared_deps, &deps);
@@ -73,7 +71,7 @@ pub fn subcmd_deps(
         deps
     };
 
-    if format == "json" {
+    if format.is_json() {
         print_json_all(&deps)?;
     } else {
         print_all(&deps);
@@ -84,24 +82,50 @@ pub fn subcmd_deps(
 
 struct SharedDep {
     name: String,
-    version: String,
     dep_type: String,
+    /// Distinct (deduped) version requirements across the projects using this dep.
+    versions: Vec<String>,
     projects: Vec<String>,
 }
 
+impl SharedDep {
+    /// True when projects pin different version requirements for this dep.
+    fn has_conflict(&self) -> bool {
+        self.versions.len() > 1
+    }
+}
+
 fn find_shared(deps: &[dependencies::DependencyEntry]) -> Vec<SharedDep> {
-    let mut by_name: HashMap<&str, Vec<&dependencies::DependencyEntry>> = HashMap::new();
+    let mut by_name: HashMap<(String, String), Vec<&dependencies::DependencyEntry>> =
+        HashMap::new();
     for d in deps {
-        by_name.entry(&d.name).or_default().push(d);
+        by_name
+            .entry((d.name.clone(), d.dep_type.clone()))
+            .or_default()
+            .push(d);
     }
 
     let mut result: Vec<SharedDep> = by_name
         .into_iter()
-        .filter(|(_, entries)| entries.len() >= 2)
-        .map(|(name, entries)| {
-            let first = entries[0];
-            let version = first.version_req.clone();
-            let dep_type = first.dep_type.clone();
+        .filter(|(_, entries)| {
+            entries
+                .iter()
+                .filter_map(|e| {
+                    Path::new(&e.project_path)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                })
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                >= 2
+        })
+        .map(|((name, dep_type), entries)| {
+            let mut versions: Vec<String> = entries
+                .iter()
+                .map(|e| e.version_req.trim().to_string())
+                .collect();
+            versions.sort();
+            versions.dedup();
             let mut projects: Vec<String> = entries
                 .iter()
                 .map(|e| {
@@ -115,9 +139,9 @@ fn find_shared(deps: &[dependencies::DependencyEntry]) -> Vec<SharedDep> {
             projects.sort();
             projects.dedup();
             SharedDep {
-                name: name.to_string(),
-                version,
+                name,
                 dep_type,
+                versions,
                 projects,
             }
         })
@@ -142,7 +166,15 @@ fn print_shared(shared: &[SharedDep], all: &[dependencies::DependencyEntry]) {
         return;
     }
 
-    println!("  Shared dependencies (used by 2+ projects):");
+    let conflicts = shared.iter().filter(|s| s.has_conflict()).count();
+    if conflicts > 0 {
+        println!(
+            "  Shared dependencies (used by 2+ projects) — ⚠ {} with version conflicts:",
+            conflicts
+        );
+    } else {
+        println!("  Shared dependencies (used by 2+ projects):");
+    }
     println!();
     for dep in shared {
         let type_colored = match dep.dep_type.as_str() {
@@ -152,11 +184,22 @@ fn print_shared(shared: &[SharedDep], all: &[dependencies::DependencyEntry]) {
             "python" => color::cyan(&dep.dep_type),
             _ => color::white(&dep.dep_type),
         };
+
+        let version_string = dep.versions.join(", ");
+        let conflict_marker = if dep.has_conflict() {
+            color::red(&format!(
+                "⚠ {} conflicting requirements",
+                dep.versions.len()
+            ))
+        } else {
+            color::green("consistent")
+        };
         println!(
-            "    {:<16} {:<8} {}    used by: {}",
+            "    {:<16} {:<20} {} {}    used by: {}",
             color::cyan(&dep.name),
-            dep.version,
+            version_string,
             type_colored,
+            conflict_marker,
             dep.projects.join(", "),
         );
     }
@@ -168,7 +211,9 @@ fn print_json_shared(shared: &[SharedDep], all: &[dependencies::DependencyEntry]
         .map(|s| {
             serde_json::json!({
                 "name": s.name,
-                "version": s.version,
+                "version": s.versions.first().cloned().unwrap_or_default(),
+                "versions": s.versions,
+                "conflict": s.has_conflict(),
                 "type": s.dep_type,
                 "projects": s.projects
             })
@@ -177,6 +222,7 @@ fn print_json_shared(shared: &[SharedDep], all: &[dependencies::DependencyEntry]
 
     let total_projects = count_projects(all);
     let unique_deps_count = count_unique(all);
+    let conflicts_count = shared.iter().filter(|s| s.has_conflict()).count();
 
     let output = serde_json::json!({
         "shared": shared_json,
@@ -184,6 +230,7 @@ fn print_json_shared(shared: &[SharedDep], all: &[dependencies::DependencyEntry]
         "total_deps": all.len(),
         "unique_deps": unique_deps_count,
         "shared_dep_count": shared.len(),
+        "conflicts_count": conflicts_count,
     });
 
     println!("{}", serde_json::to_string_pretty(&output)?);
@@ -306,4 +353,102 @@ fn count_unique(deps: &[dependencies::DependencyEntry]) -> usize {
     names.sort();
     names.dedup();
     names.len()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn entry(
+        name: &str,
+        version: &str,
+        proj: &str,
+        dep_type: &str,
+    ) -> dependencies::DependencyEntry {
+        dependencies::DependencyEntry {
+            name: name.to_string(),
+            version_req: version.to_string(),
+            project_path: format!("/proj/{}_root/{}", dep_type, proj),
+            dep_type: dep_type.to_string(),
+            is_dev: false,
+        }
+    }
+
+    #[test]
+    fn test_find_shared_groups_by_name_and_type() {
+        let deps = vec![
+            entry("serde", "1.0", "a", "rust"),
+            entry("serde", "1.0", "b", "rust"),
+            // Same crate name in another ecosystem must not merge.
+            entry("serde", "3.0", "a", "js"),
+        ];
+        let shared = find_shared(&deps);
+        assert_eq!(shared.len(), 1);
+        assert_eq!(shared[0].name, "serde");
+        assert_eq!(shared[0].dep_type, "rust");
+        assert_eq!(shared[0].projects, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
+    fn test_find_shared_reports_version_conflict() {
+        let deps = vec![
+            entry("serde", "1.0", "a", "rust"),
+            entry("serde", "1.0", "b", "rust"),
+            entry("serde", "^2.0", "c", "rust"),
+        ];
+        let shared = find_shared(&deps);
+        assert_eq!(shared.len(), 1);
+        assert!(shared[0].has_conflict());
+        assert_eq!(
+            shared[0].versions,
+            vec!["1.0".to_string(), "^2.0".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_find_shared_matching_versions_are_not_a_conflict() {
+        let deps = vec![
+            entry("serde", "1.0", "a", "rust"),
+            entry("serde", "1.0", "b", "rust"),
+        ];
+        let shared = find_shared(&deps);
+        assert_eq!(shared.len(), 1);
+        assert!(!shared[0].has_conflict());
+    }
+
+    #[test]
+    fn test_find_shared_requires_two_distinct_projects() {
+        // Both entries come from the same project: not shared.
+        let mut a1 = entry("serde", "1.0", "a", "rust");
+        let mut a2 = entry("serde", "1.0", "a", "rust");
+        a1.is_dev = false;
+        a2.is_dev = true;
+        let shared = find_shared(&[a1, a2]);
+        assert!(shared.is_empty());
+    }
+
+    #[test]
+    fn test_find_shared_wildcard_treated_as_distinct() {
+        let deps = vec![
+            entry("serde", "1.0", "a", "rust"),
+            entry("serde", "*", "b", "rust"),
+        ];
+        let shared = find_shared(&deps);
+        assert_eq!(shared.len(), 1);
+        assert!(shared[0].has_conflict());
+    }
+
+    #[test]
+    fn test_shared_sorted_by_project_count_desc() {
+        let deps = vec![
+            entry("serde", "1.0", "a", "rust"),
+            entry("serde", "1.0", "b", "rust"),
+            entry("serde", "1.0", "c", "rust"),
+            entry("tokio", "1.0", "a", "rust"),
+            entry("tokio", "1.0", "b", "rust"),
+        ];
+        let shared = find_shared(&deps);
+        assert_eq!(shared[0].name, "serde");
+        assert_eq!(shared[1].name, "tokio");
+    }
 }

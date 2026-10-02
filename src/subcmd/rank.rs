@@ -3,6 +3,7 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::color;
+use crate::format::OutputFormat;
 use crate::git;
 use crate::snapshot::SnapshotStore;
 
@@ -16,10 +17,7 @@ pub fn subcmd_rank(
     category: bool,
     format: Option<String>,
 ) -> Result<()> {
-    let fmt = format.unwrap_or_default();
-    if !fmt.is_empty() && fmt != "json" {
-        anyhow::bail!("Unsupported format: '{}'. Use 'json'.", fmt);
-    }
+    let fmt = OutputFormat::parse(format.as_deref(), &[OutputFormat::Json])?;
 
     let metric = by.unwrap_or_else(|| "health".to_string());
     if !VALID_METRICS.contains(&metric.as_str()) {
@@ -133,7 +131,7 @@ pub fn subcmd_rank(
         projects = winners;
     }
 
-    if fmt == "json" {
+    if fmt.is_json() {
         let json: Vec<serde_json::Value> = projects
             .iter()
             .map(|(name, ptype, val, path)| {

@@ -14,7 +14,7 @@ Rust edition **2024** (MSRV ≥ 1.85). Don't assume 2021.
 
 ## Tests
 
-Tests live inline as `#[cfg(test)] mod tests` blocks in the source files (no separate test directory). New code must add tests:
+Unit tests live inline as `#[cfg(test)] mod tests` blocks in the source files. End-to-end CLI tests live in `tests/cli.rs` (they run the real binary against an isolated temp `HOME`). New code must add tests:
 ```bash
 cargo test
 ```
@@ -22,9 +22,10 @@ cargo test
 ## Architecture
 
 - `src/main.rs` — clap derive dispatch to subcommands in `src/subcmd/`
-- `src/lib.rs` — public modules: chart / color / command / config / dependencies / detect / export_template / git / health / metrics / snapshot / statistics / subcmd / tags
+- `src/lib.rs` — public modules: chart / color / command / config / dependencies / detect / export_template / format / git / health / metrics / snapshot / statistics / subcmd / tags
 - `src/command.rs` — 18 subcommand definitions (list, scan, report, activity, brief, deps, orphans, rank, search, size, config, inspect, stats, trend, completion, export, snapshot, tag)
 - `src/detect.rs` — project type detection and directory classification (`classify_dirs` walks `scan.max_depth` levels, returns `(path, depth)`)
+- `src/format.rs` — shared `OutputFormat` parsing for the `-f, --format` flag across subcommands
 - `src/git.rs` — git health, commit stats, extra git metrics
 - `src/metrics.rs` — LOC estimation, directory size, file type distribution
 - `src/health.rs` — health score calculation and single-project analysis

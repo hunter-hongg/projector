@@ -24,8 +24,9 @@ pub struct ProjectSnapshot {
     pub last_modified_date: NaiveDateTime,
     pub lines_of_code: u32,
     pub health_score: u8,
-    /// Depth below the scanned root (0 = direct child). `0` on a snapshot
-    /// written before depth was recorded, since legacy scans were one level only.
+    /// Depth below the scanned root, `1` being a direct child. A snapshot
+    /// written before depth was recorded migrates to `1`, since legacy scans
+    /// walked exactly one level.
     #[serde(default)]
     pub depth: u32,
 }
