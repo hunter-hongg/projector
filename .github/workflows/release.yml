@@ -1,7 +1,8 @@
 name: Release
 
-# Build release artifacts for every platform on every push to master, and publish
-# a GitHub Release (with the linux-x86_64 binary) whenever a `v*` tag is pushed.
+# Build release artifacts on every push to master (native runners only —
+# cross-compiling libgit2-sys needs a C toolchain + OpenSSL for the target).
+# Publish a GitHub Release (with all platform binaries) whenever a `v*` tag is pushed.
 
 on:
   push:
@@ -22,20 +23,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
-            rust_target: x86_64-unknown-linux-gnu
+          # GitHub-hosted native runners (free for public repos):
+          # ubuntu-latest = x86_64, ubuntu-24.04-arm = aarch64,
+          # macos-14 = arm64 (M1), macos-13 = x86_64 (Intel), windows-latest = x86_64.
+          - os: ubuntu-latest
             artifact_suffix: linux-x86_64
-          - os: ubuntu-22.04
-            rust_target: aarch64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
             artifact_suffix: linux-aarch64
           - os: macos-14
-            rust_target: x86_64-apple-darwin
-            artifact_suffix: macos-x86_64
-          - os: macos-14
-            rust_target: aarch64-apple-darwin
             artifact_suffix: macos-aarch64
+          - os: macos-13
+            artifact_suffix: macos-x86_64
           - os: windows-latest
-            rust_target: x86_64-pc-windows-msvc
             artifact_suffix: windows-x86_64
 
     steps:
@@ -43,53 +42,56 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust_target }}
 
-      - name: Cross-compile release
-        run: rustup run stable cargo build --release --target ${{ matrix.rust_target }} --locked
+      - name: Build release
+        run: cargo build --release --locked
 
-      - name: Strip binary (non-Windows)
+      - name: Strip binary
         if: runner.os != 'Windows'
-        run: strip "target/${{ matrix.rust_target }}/release/projector"
+        run: strip target/release/projector
 
-      - name: Assemble artifact name
+      - name: Determine version
         id: meta
         shell: bash
         run: |
-          # Tag name drives the release version; for master builds, fall back to a date-based version.
-          if [ -n "${GITHUB_REF_NAME:-}" ]; then
+          # Tag pushes drive the version (v0.0.1 → 0.0.1); master builds get a dev tag.
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
           else
-            VERSION="$(date +%Y.%-m).0"
+            VERSION="dev-$(date +%Y%m%d)"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "suffix=${{ matrix.artifact_suffix }}" >> "$GITHUB_OUTPUT"
 
       - name: Package artifact
         shell: bash
         run: |
-          BIN="target/${{ matrix.rust_target }}/release/projector${{ runner.os == 'Windows' && '.exe' || '' }}"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            BIN="target/release/projector.exe"
+          else
+            BIN="target/release/projector"
+          fi
           NAME="projector-${{ steps.meta.outputs.version }}-${{ matrix.artifact_suffix }}"
           mkdir -p dist
+          cp "$BIN" "dist/${NAME}"
+          cd dist
           if [ "${{ runner.os }}" = "Windows" ]; then
-            7z a "dist/${NAME}.zip" "$BIN"
+            7z a "${NAME}.zip" "${NAME}"
           else
-            mv "$BIN" "dist/${NAME}"
-            tar -czf "dist/${NAME}.tar.gz" -C dist "$(basename "$NAME")"
+            tar -czf "${NAME}.tar.gz" "${NAME}"
           fi
+          echo "artifact=dist/${NAME}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: projector-${{ matrix.artifact_suffix }}
+          name: projector-${{ steps.meta.outputs.version }}-${{ matrix.artifact_suffix }}
           path: dist/projector-${{ steps.meta.outputs.version }}-${{ matrix.artifact_suffix }}.*
 
   release:
     name: Publish GitHub Release
     needs: build
-    # Only publish a GitHub Release when a `v*` tag is pushed.
+    # Only publish when a `v*` tag is pushed.
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
@@ -97,36 +99,27 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build release (linux-x86_64)
-        run: rustup run stable cargo build --release --locked
-
-      - name: Strip binary
-        run: strip target/release/projector
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Generate release notes
-        id: notes
-        shell: bash
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
           {
             echo "## What's changed"
             echo
-            # Show commits since the previous tag, or since HEAD~50 as a fallback.
-            git log "$(git describe --tags --abbrev=0 2>/dev/null || echo HEAD~50)"..HEAD --format='- %s (%h)' | head -50
+            # Commits since the previous tag (fallback: last 50 commits).
+            PREV="$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo HEAD~50)"
+            git log "${PREV}"..HEAD --format='- %s (%h)' | head -50
           } > RELEASE_NOTES.md
-          echo "notes<<EOF" >> "$GITHUB_OUTPUT"
-          cat RELEASE_NOTES.md >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          cat RELEASE_NOTES.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: target/release/projector
-          tag_name: ${{ github.ref_name }}
-          name: projector ${{ github.ref_name }}
-          body_path: RELEASE_NOTES.md
+          files: dist/projector-*
+          generate_release_notes: true
           draft: false
           prerelease: false
