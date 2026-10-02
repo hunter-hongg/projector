@@ -44,8 +44,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets:
-            - ${{ matrix.rust_target }}
+          targets: ${{ matrix.rust_target }}
 
       - name: Cross-compile release
         run: rustup run stable cargo build --release --target ${{ matrix.rust_target }} --locked
