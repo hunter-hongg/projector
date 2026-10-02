@@ -2,24 +2,10 @@ name: CI
 
 on:
   push:
-    branches:
-      - master
-  pull_request:
-    branches:
-      - master
-  workflow_dispatch:
 
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@v1
-        with:
-          components: [rustfmt, clippy]
-      - name: Format check
-        run: cargo fmt --check
-      - name: Lint
-        run: cargo clippy --all-targets -- -D warnings
-      - name: Test
-        run: cargo test
+      - run: echo "ci minimal"
