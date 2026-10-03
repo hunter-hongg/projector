@@ -70,3 +70,13 @@
 - Added `projector snapshot migrate` to persist the backfill for legacy snapshots
 - Implemented the documented-but-missing `scan.max_depth` config key
 - `scan`/`list` now discover nested repositories; each project records its `depth`
+- Unified `-f, --format` validation across all subcommands via a shared `OutputFormat` type
+- Added cross-project dependency version-conflict detection to `deps --shared`
+- Released **0.2.0**
+
+## 2026-10-03
+
+- Added `deps --outdated`: delegates to each ecosystem's own tool (`cargo-outdated`, `npm outdated`, `go list -m -u`, `pip list --outdated`); offline by default, install hints when a tool is missing
+- Added Markdown output expansion: `brief -f md` and `export markdown`, sharing a markdown table builder that escapes `|` and newlines
+- Integration tests grew from 5 to 12 (tag, export, completion, snapshot prune, stats, brief -f md, offline deps)
+- Released **0.3.0**
