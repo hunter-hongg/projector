@@ -2,7 +2,7 @@
 
 > Personal project statistics tool — scan git projects, analyze health, track trends
 
-Version: 0.2.0 | Config path: `~/.projector/config.toml` | Snapshot path: `~/.projector/snapshots/`
+Version: 0.3.0 | Config path: `~/.projector/config.toml` | Snapshot path: `~/.projector/snapshots/`
 
 ---
 
