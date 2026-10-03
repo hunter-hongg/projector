@@ -18,6 +18,8 @@ cargo install projector
 ```bash
 # List projects in a directory
 projector list [dir]
+projector list --type Rust --depth 2
+projector list -f json
 
 # Scan projects and save a snapshot
 projector scan [dir]
@@ -59,7 +61,7 @@ Full manual: [USAGE.md](USAGE.md).
 
 | Command | Description |
 |---------|-------------|
-| `list [dir] [--tag]` | List projects in a directory |
+| `list [dir] [--tag] [--type] [--depth] [-f json]` | List projects in a directory |
 | `scan [dir]` | Scan projects and save a snapshot to `~/.projector/snapshots/` |
 | `report [--diff] [-f json\|md]` | Health dashboard with sorting, filtering, diff |
 | `activity [--days] [--project]` | Commit activity stats per project |
@@ -72,7 +74,7 @@ Full manual: [USAGE.md](USAGE.md).
 | `config [set <key> <value>]` | View / change config |
 | `inspect [path]` | Deep analysis of a single project |
 | `stats` | Global statistics |
-| `trend [path] [--metric]` | Cross-snapshot trend chart (ASCII) |
+| `trend [path] [--metric] [-f json\|md]` | Cross-snapshot trend chart (ASCII/Markdown) |
 | `completion <shell>` | Generate shell completion scripts |
 | `export html\|markdown [-o]` | Export dashboard as HTML or Markdown |
 | `snapshot prune\|migrate` | Snapshot management (prune old snapshots, migrate schema) |

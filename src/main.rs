@@ -8,8 +8,14 @@ use projector::subcmd;
 fn main() -> Result<()> {
     let cli = Projector::parse();
     match cli.command {
-        Commands::List { dir, tag } => {
-            subcmd::list::subcmd_list(dir, tag)?;
+        Commands::List {
+            dir,
+            tag,
+            type_filter,
+            depth,
+            format,
+        } => {
+            subcmd::list::subcmd_list(dir, tag, type_filter, depth, format)?;
             Ok(())
         }
         Commands::Orphans { days, all, format } => {

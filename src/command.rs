@@ -13,6 +13,14 @@ pub enum Commands {
         dir: Option<String>,
         #[arg(long)]
         tag: Option<String>,
+        /// Filter by project type, e.g. `--type Rust`
+        #[arg(long = "type")]
+        type_filter: Option<String>,
+        /// Only show projects discovered at exactly this depth below the scan root
+        #[arg(long)]
+        depth: Option<u32>,
+        #[arg(short = 'f', long = "format")]
+        format: Option<String>,
     },
     Scan {
         dir: Option<String>,
@@ -109,6 +117,9 @@ pub enum Commands {
         path: Option<String>,
         #[arg(long)]
         days: Option<u32>,
+        /// Metric over snapshots: `health` (avg), `loc` (sum), `unpushed`
+        /// (sum), `dirty` (ratio), `age` (avg days since last commit),
+        /// `projects` (count)
         #[arg(long)]
         metric: Option<String>,
         #[arg(short = 'f', long = "format")]

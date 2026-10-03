@@ -469,6 +469,112 @@ fn stats_emits_json_and_counts_projects() {
 }
 
 #[test]
+fn list_json_and_filters_via_cli() {
+    let root = scratch("list_filter");
+    let home = root.join("home");
+    let work = root.join("work");
+    git_repo(&work.join("rust-app"));
+    git_repo(&work.join("mono").join("inner"));
+    std::fs::write(work.join("rust-app").join("Cargo.toml"), "").unwrap();
+
+    // The default max_depth is 1; raise it so the nested mono/inner repo is
+    // discovered at all (mirrors nested_repos_discovered_via_config_max_depth).
+    let cfg = projector(&home, &["config", "set", "scan.max_depth", "2"]);
+    assert!(cfg.status.success(), "config set failed: {}", stderr(&cfg));
+
+    // Plain `list` shows every discovered project with its depth.
+    let out = projector(&home, &["list", work.to_str().unwrap()]);
+    assert!(out.status.success(), "list failed: {}", stderr(&out));
+    assert!(stdout(&out).contains("rust-app"));
+    assert!(stdout(&out).contains("depth 1"));
+
+    // `--type` filters by project-type substring (like `rank --type`).
+    let typed = projector(&home, &["list", "--type", "Rust", work.to_str().unwrap()]);
+    assert!(typed.status.success(), "{}", stderr(&typed));
+    let t = stdout(&typed);
+    assert!(t.contains("rust-app"));
+    assert!(
+        !t.contains("inner"),
+        "--type Rust must drop the unknown mono/inner"
+    );
+
+    // `--depth N` keeps only projects found at exactly that depth.
+    let deep = projector(&home, &["list", "--depth", "2", work.to_str().unwrap()]);
+    assert!(deep.status.success(), "{}", stderr(&deep));
+    assert!(stdout(&deep).contains("inner"));
+    assert!(!stdout(&deep).contains("rust-app"));
+
+    // `-f json` emits structured rows (path, type, depth, tags).
+    let json = projector(&home, &["list", "-f", "json", work.to_str().unwrap()]);
+    assert!(json.status.success(), "{}", stderr(&json));
+    let rows: serde_json::Value = serde_json::from_str(&stdout(&json)).unwrap();
+    let arr = rows.as_array().unwrap();
+    assert_eq!(arr.len(), 2, "json must list both projects: {rows}");
+    let depths: Vec<u64> = arr.iter().map(|r| r["depth"].as_u64().unwrap()).collect();
+    assert!(depths.contains(&1));
+    assert!(depths.contains(&2));
+    assert!(
+        arr.iter().any(|r| r["project_type"] == "Rust"),
+        "Cargo.toml project must detect as Rust"
+    );
+    assert!(
+        arr.iter().all(|r| r["tags"].as_array().unwrap().is_empty()),
+        "no tags were set, so tags must be empty"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn trend_metrics_and_markdown_via_cli() {
+    let root = scratch("trend_metrics");
+    let home = root.join("home");
+    let work = root.join("work");
+    git_repo(&work.join("app"));
+
+    // Two snapshots with distinct timestamps (filenames are second-resolution).
+    let s1 = projector(&home, &["scan", work.to_str().unwrap()]);
+    assert!(s1.status.success(), "{}", stderr(&s1));
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let s2 = projector(&home, &["scan", work.to_str().unwrap()]);
+    assert!(s2.status.success(), "{}", stderr(&s2));
+
+    // New metrics are accepted and produce a data point per snapshot.
+    for metric in ["health", "loc", "unpushed", "dirty", "age", "projects"] {
+        let out = projector(&home, &["trend", "--metric", metric, "-f", "json"]);
+        assert!(
+            out.status.success(),
+            "trend --metric {metric} failed: {}",
+            stderr(&out)
+        );
+        let json: serde_json::Value = serde_json::from_str(&stdout(&out)).unwrap();
+        let arr = json.as_array().unwrap();
+        assert_eq!(arr.len(), 2, "{metric}: expected 2 snapshots");
+        assert_eq!(arr[0]["metric"], metric);
+        assert!(arr[0]["value"].as_f64().is_some());
+    }
+
+    // An unknown metric is rejected with the valid list.
+    let bad = projector(&home, &["trend", "--metric", "nope"]);
+    assert!(!bad.status.success());
+    let msg = stdout(&bad) + &stderr(&bad);
+    assert!(msg.contains("Invalid metric"), "{msg}");
+    assert!(
+        msg.contains("health, loc, unpushed, dirty, age, projects"),
+        "{msg}"
+    );
+
+    // Markdown output renders a table.
+    let md = projector(&home, &["trend", "-f", "md"]);
+    assert!(md.status.success(), "{}", stderr(&md));
+    let text = stdout(&md);
+    assert!(text.contains("# Health Score Trend"));
+    assert!(text.contains("| Date |"));
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn deps_outdated_is_offline_without_the_flag() {
     let root = scratch("deps_noflag");
     let home = root.join("home");

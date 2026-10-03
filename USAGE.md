@@ -42,20 +42,26 @@ cargo install projector
 List git project directories and plain directories under a path.
 
 ```bash
-projector list [dir] [--tag <tag>]
+projector list [dir] [--tag <tag>] [--type <type>] [--depth <N>] [-f json]
 ```
 
 - `dir` — target directory, default `.`
 - `--tag <tag>` — only show projects with the given tag
+- `--type <type>` — only show projects whose detected type contains the substring (e.g. `Rust`, `Python`)
+- `--depth <N>` — only show projects discovered at exactly this depth below the scan root
+- `-f, --format` — output format: `json` (terminal table is default)
 
-Output: each project's name, detected language type, last modified time, and tags (if any). Dates older than 30 days are printed in red. Projects found below the first level also show their `depth`.
+Output: each project's name, detected language type, last modified time, depth, and tags (if any). Dates older than 30 days are printed in red. `-f json` emits an array of `{path, project_type, depth, last_modified, tags}` objects.
 
-The search depth follows the config key `scan.max_depth` (default 1 = direct children only).
+The search depth follows the config key `scan.max_depth` (default 1 = direct children only). `--type` and `--depth` can be combined with `--tag`.
 
 ```bash
 projector list                         # list projects in the current directory
 projector list ~/projects              # list a specific directory
 projector list --tag work              # only projects tagged "work"
+projector list --type Rust             # only Rust projects
+projector list --depth 2               # only nested (depth-2) projects
+projector list -f json                 # machine-readable list
 ```
 
 ---
@@ -433,16 +439,20 @@ projector trend [path] [--days <N>] [--metric <name>] [-f json]
 |--------|-------------|
 | `path` | Project path (optional, defaults to all projects aggregated) |
 | `--days <N>` | Only snapshots from the last N days |
-| `--metric` | `health` (default) or `loc` |
-| `-f, --format` | `json` |
+| `--metric` | `health` (avg, default), `loc` (sum), `unpushed` (sum), `dirty` (ratio), `age` (avg days since last commit), `projects` (count) |
+| `-f, --format` | `json`, `md` (terminal chart is default) |
 
 ```bash
 projector trend                        # average health trend
 projector trend myapp                  # single project health trend
 projector trend --metric loc           # LOC trend
+projector trend --metric dirty         # dirty-project ratio over time
 projector trend --days 90              # last 90 days
 projector trend -f json                # JSON
+projector trend -f md                  # Markdown table (paste into notes)
 ```
+
+Per-project trends (`path` given) plot the raw metric for that project; aggregate trends (no `path`) plot the sum (loc/unpushed), average (health/age), ratio (dirty), or count (projects). JSON rows carry `{date, value, metric}`.
 
 ---
 

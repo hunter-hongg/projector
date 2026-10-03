@@ -40,6 +40,8 @@ cargo test
 - `src/outdated.rs` — `deps --outdated` support: delegates to each ecosystem's own tool (`cargo-outdated`, `npm outdated`, `go list -m -u`, `pip list --outdated`), degrading to an install hint when a tool is missing. Pure parsers are unit-testable offline.
 - `src/color.rs` — ANSI terminal color helpers
 
+Subcommand notes: `list` supports `--tag`/`--type`/`--depth` filters and `-f json` (rows carry `{path, project_type, depth, last_modified, tags}`); `trend --metric` accepts `health`/`loc`/`unpushed`/`dirty`/`age`/`projects` with `-f json|md`.
+
 ## Storage Paths
 
 - Config: `~/.projector/config.toml`

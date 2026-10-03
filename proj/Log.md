@@ -80,3 +80,5 @@
 - Added Markdown output expansion: `brief -f md` and `export markdown`, sharing a markdown table builder that escapes `|` and newlines
 - Integration tests grew from 5 to 12 (tag, export, completion, snapshot prune, stats, brief -f md, offline deps)
 - Released **0.3.0**
+- Added `list -f json` plus `--type`/`--depth` filters; list rows now always carry depth, and JSON rows carry `{path, project_type, depth, last_modified, tags}`
+- Expanded `trend --metric` from 2 to 6 metrics (health, loc, unpushed, dirty, age, projects) and added `-f md`
