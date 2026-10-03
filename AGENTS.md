@@ -22,7 +22,7 @@ cargo test
 ## Architecture
 
 - `src/main.rs` — clap derive dispatch to subcommands in `src/subcmd/`
-- `src/lib.rs` — public modules: chart / color / command / config / dependencies / detect / export_template / format / git / health / metrics / snapshot / statistics / subcmd / tags
+- `src/lib.rs` — public modules: chart / color / command / config / dependencies / detect / export_template / format / git / health / markdown / metrics / outdated / snapshot / statistics / subcmd / tags
 - `src/command.rs` — 18 subcommand definitions (list, scan, report, activity, brief, deps, orphans, rank, search, size, config, inspect, stats, trend, completion, export, snapshot, tag)
 - `src/detect.rs` — project type detection and directory classification (`classify_dirs` walks `scan.max_depth` levels, returns `(path, depth)`)
 - `src/format.rs` — shared `OutputFormat` parsing for the `-f, --format` flag across subcommands
@@ -35,7 +35,9 @@ cargo test
 - `src/snapshot.rs` — snapshot serialization/loading/diffing/pruning/migrating, JSON storage versioned by `SCHEMA_VERSION`
 - `src/config.rs` — TOML config read/write, path `~/.projector/config.toml`
 - `src/tags.rs` — project tag management, TOML at `~/.projector/tags.toml`
-- `src/export_template.rs` — HTML dashboard template generation (self-contained, inline CSS)
+- `src/export_template.rs` — HTML dashboard template generation (self-contained, inline CSS), plus a Markdown rendering of the same dashboard
+- `src/markdown.rs` — shared GitHub-flavoured Markdown table builder (cell escaping for `|` and newlines), used by `report`, `brief`, and `export markdown`
+- `src/outdated.rs` — `deps --outdated` support: delegates to each ecosystem's own tool (`cargo-outdated`, `npm outdated`, `go list -m -u`, `pip list --outdated`), degrading to an install hint when a tool is missing. Pure parsers are unit-testable offline.
 - `src/color.rs` — ANSI terminal color helpers
 
 ## Storage Paths

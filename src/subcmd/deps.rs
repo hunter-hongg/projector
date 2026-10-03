@@ -6,12 +6,14 @@ use anyhow::Result;
 use crate::color;
 use crate::dependencies;
 use crate::format::OutputFormat;
+use crate::outdated;
 use crate::snapshot::SnapshotStore;
 
 pub fn subcmd_deps(
     path: Option<String>,
     shared: bool,
     project: Option<String>,
+    outdated: bool,
     format: Option<String>,
 ) -> Result<()> {
     let format = OutputFormat::parse(format.as_deref(), &[OutputFormat::Json])?;
@@ -49,10 +51,14 @@ pub fn subcmd_deps(
 
     if shared {
         let shared_deps = find_shared(&deps);
+        let updates = outdated::collect(&deps);
         if format.is_json() {
-            print_json_shared(&shared_deps, &deps)?;
+            print_json_shared(&shared_deps, &deps, outdated, &updates)?;
         } else {
             print_shared(&shared_deps, &deps);
+            if outdated {
+                print_outdated(&updates);
+            }
         }
         return Ok(());
     }
@@ -71,13 +77,157 @@ pub fn subcmd_deps(
         deps
     };
 
+    let updates = if outdated {
+        outdated::collect(&deps)
+    } else {
+        // Without the flag nothing may touch the network.
+        outdated::Report::default()
+    };
+
     if format.is_json() {
-        print_json_all(&deps)?;
+        print_json_all(&deps, outdated, &updates)?;
     } else {
         print_all(&deps);
+        if outdated {
+            print_outdated(&updates);
+        }
     }
 
     Ok(())
+}
+
+/// Render the `--outdated` section of the terminal report.
+fn print_outdated(report: &outdated::Report) {
+    println!();
+    println!(
+        "  {}",
+        color::info(&format!(
+            "Outdated check — {} project(s) queried",
+            report.projects_checked
+        ))
+    );
+    println!();
+
+    // "Nothing outdated" is only a real answer if something actually answered.
+    // An empty result alongside a missing or failed tool must never read as an
+    // all-clear.
+    let fully_covered = report.missing.is_empty() && report.failures.is_empty();
+    if report.entries.is_empty() && report.projects_checked > 0 && fully_covered {
+        println!(
+            "  {}",
+            color::green("All queried dependencies are current.")
+        );
+    } else if report.entries.is_empty() && report.projects_checked > 0 {
+        println!(
+            "  {}",
+            color::yellow("No updates found in the covered ecosystems.")
+        );
+    }
+
+    let mut by_project: std::collections::HashMap<&str, Vec<&outdated::OutdatedEntry>> =
+        std::collections::HashMap::new();
+    for e in &report.entries {
+        by_project
+            .entry(e.project_path.as_str())
+            .or_default()
+            .push(e);
+    }
+    let mut projects: Vec<&str> = by_project.keys().copied().collect();
+    projects.sort();
+
+    for project_path in projects {
+        let name = Path::new(project_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(project_path);
+        let mut rows = by_project.remove(project_path).unwrap_or_default();
+        rows.sort_by_key(|e| (e.dep_type.clone(), e.name.clone()));
+        println!("    {}", color::cyan(name));
+        for e in rows {
+            println!(
+                "      {:<28} {:<16} -> {:<16} {}",
+                color::white(&e.name),
+                e.current,
+                color::yellow(&e.latest),
+                type_colored(&e.dep_type),
+            );
+        }
+    }
+
+    render_outdated_caveats(report);
+}
+
+/// Colour an ecosystem label the way the rest of `deps` does.
+fn type_colored(dep_type: &str) -> String {
+    match dep_type {
+        "rust" => color::green(dep_type),
+        "js" => color::yellow(dep_type),
+        "go" => color::blue(dep_type),
+        "python" => color::cyan(dep_type),
+        _ => color::white(dep_type),
+    }
+}
+
+/// Tools the user must install, and tools that ran and failed. Both are shown
+/// so an empty result is never mistaken for "everything is current".
+fn render_outdated_caveats(report: &outdated::Report) {
+    for probe in &report.missing {
+        println!(
+            "  {} {} not available — {}",
+            color::yellow("⚠"),
+            probe.binary(),
+            probe.install_hint()
+        );
+    }
+    for (probe, message) in &report.failures {
+        println!(
+            "  {} {} failed: {}",
+            color::red("✗"),
+            probe.binary(),
+            message
+        );
+    }
+    if !report.missing.is_empty() || !report.failures.is_empty() {
+        println!("  {}", color::yellow("Results above are partial."));
+    }
+}
+
+/// JSON shape of the `--outdated` section; `null` when the flag was not passed.
+fn outdated_json(report: &outdated::Report) -> serde_json::Value {
+    let entries: Vec<serde_json::Value> = report
+        .entries
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "name": e.name,
+                "current": e.current,
+                "wanted": e.wanted,
+                "latest": e.latest,
+                "type": e.dep_type,
+                "project": e.project_path,
+            })
+        })
+        .collect();
+
+    serde_json::json!({
+        "projects_checked": report.projects_checked,
+        "outdated": entries,
+        "outdated_count": entries.len(),
+        "tools_missing": report
+            .missing
+            .iter()
+            .map(|p| serde_json::json!({
+                "tool": p.binary(),
+                "type": p.dep_type(),
+                "install_hint": p.install_hint(),
+            }))
+            .collect::<Vec<_>>(),
+        "failures": report
+            .failures
+            .iter()
+            .map(|(p, m)| serde_json::json!({ "tool": p.binary(), "message": m }))
+            .collect::<Vec<_>>(),
+    })
 }
 
 struct SharedDep {
@@ -205,7 +355,12 @@ fn print_shared(shared: &[SharedDep], all: &[dependencies::DependencyEntry]) {
     }
 }
 
-fn print_json_shared(shared: &[SharedDep], all: &[dependencies::DependencyEntry]) -> Result<()> {
+fn print_json_shared(
+    shared: &[SharedDep],
+    all: &[dependencies::DependencyEntry],
+    outdated: bool,
+    updates: &outdated::Report,
+) -> Result<()> {
     let shared_json: Vec<serde_json::Value> = shared
         .iter()
         .map(|s| {
@@ -231,6 +386,11 @@ fn print_json_shared(shared: &[SharedDep], all: &[dependencies::DependencyEntry]
         "unique_deps": unique_deps_count,
         "shared_dep_count": shared.len(),
         "conflicts_count": conflicts_count,
+        "outdated": if outdated {
+            outdated_json(updates)
+        } else {
+            serde_json::Value::Null
+        },
     });
 
     println!("{}", serde_json::to_string_pretty(&output)?);
@@ -294,7 +454,11 @@ fn print_all(deps: &[dependencies::DependencyEntry]) {
     }
 }
 
-fn print_json_all(deps: &[dependencies::DependencyEntry]) -> Result<()> {
+fn print_json_all(
+    deps: &[dependencies::DependencyEntry],
+    outdated: bool,
+    updates: &outdated::Report,
+) -> Result<()> {
     let total_projects = count_projects(deps);
     let unique_deps_count = count_unique(deps);
 
@@ -335,6 +499,11 @@ fn print_json_all(deps: &[dependencies::DependencyEntry]) -> Result<()> {
         "total_projects": total_projects,
         "total_deps": deps.len(),
         "unique_deps": unique_deps_count,
+        "outdated": if outdated {
+            outdated_json(updates)
+        } else {
+            serde_json::Value::Null
+        },
     });
 
     println!("{}", serde_json::to_string_pretty(&output)?);

@@ -47,6 +47,10 @@ pub enum Commands {
         shared: bool,
         #[arg(long)]
         project: Option<String>,
+        /// Ask each ecosystem's own toolchain whether newer versions exist.
+        /// Reaches the network; off unless this flag is passed.
+        #[arg(long)]
+        outdated: bool,
         #[arg(short = 'f', long = "format")]
         format: Option<String>,
     },
@@ -135,6 +139,11 @@ pub enum ConfigAction {
 #[derive(Subcommand)]
 pub enum ExportAction {
     Html {
+        #[arg(short = 'o', long = "output")]
+        output: Option<String>,
+    },
+    /// Render the dashboard as a Markdown document.
+    Markdown {
         #[arg(short = 'o', long = "output")]
         output: Option<String>,
     },

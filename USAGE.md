@@ -195,7 +195,7 @@ Output:
 Dependency analysis. Supports Rust (Cargo.toml), JavaScript (package.json), Go (go.mod), Python (pyproject.toml/requirements.txt).
 
 ```bash
-projector deps [path] [--shared] [--project <name>] [-f json]
+projector deps [path] [--shared] [--project <name>] [--outdated] [-f json]
 ```
 
 | Option | Description |
@@ -203,6 +203,7 @@ projector deps [path] [--shared] [--project <name>] [-f json]
 | `path` | Project path (optional; scans all projects in the latest snapshot) |
 | `--shared` | Show only dependencies shared by 2+ projects |
 | `--project <name>` | Filter by project name (fuzzy match) |
+| `--outdated` | Check each project for newer upstream versions. Delegates to each ecosystem's own tool (`cargo-outdated`, `npm outdated`, `go list -m -u`, `pip list --outdated`) — reaches the network. If a tool is missing it is reported with an install hint instead of failing. |
 | `-f, --format` | Output format: `json` |
 
 ```bash
@@ -211,6 +212,8 @@ projector deps ~/projects/myapp                           # single project
 projector deps --shared                                   # shared (cross-project) deps
 projector deps --project myapp                            # only projects named "myapp"
 projector deps --shared -f json                           # shared deps as JSON
+projector deps --outdated                                 # check for newer versions
+projector deps --shared --outdated -f json                # shared + outdated, as JSON
 ```
 
 `--shared` output: for each shared dependency, show name, version, type, and the projects using it. When projects pin **different version requirements** for the same dependency, it is flagged with `⚠ conflicting requirements`: for example `serde` with `1.0` in one project and `^2.0` in another. The JSON report carries `conflict`, the full `versions` list, and a `conflicts_count` summary.
@@ -274,13 +277,13 @@ projector rank --by commits -f json     # JSON
 Project brief based on the latest snapshot: totals, health distribution, activity.
 
 ```bash
-projector brief [--days <N>] [-f json]
+projector brief [--days <N>] [-f json|md]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--days <N>` | Commit activity window in days (default 1) |
-| `-f, --format` | Output format: `json` |
+| `-f, --format` | Output format: `json`, `markdown` (terminal table is default) |
 
 Output:
 - total projects, average health, health distribution (≥80 / 50–79 / <50)
@@ -291,6 +294,7 @@ Output:
 projector brief                         # last 1 day
 projector brief --days 7               # last 7 days
 projector brief --days 30 -f json       # last 30 days, JSON
+projector brief -f md                   # Markdown digest (paste into notes/README)
 ```
 
 ---
@@ -479,19 +483,27 @@ projector snapshot migrate             # bring old snapshots up to the current s
 
 ## export
 
-Export an HTML dashboard.
+Export a dashboard.
 
 ```bash
 projector export html [-o <output>]
+projector export markdown [-o <output>]
 ```
 
 | Option | Description |
 |--------|-------------|
-| `-o, --output` | Output HTML file path (default stdout) |
+| `-o, --output` | Output file path (default stdout) |
+
+| Format | Description |
+|--------|-------------|
+| `html` | Self-contained static HTML dashboard (default dark-aware, inline CSS) |
+| `markdown` | GitHub-flavoured Markdown version of the same dashboard, for pasting into notes, READMEs, or CI comments |
 
 ```bash
 projector export html                                   # print HTML to stdout
 projector export html -o dashboard.html                 # write to a file
+projector export markdown                               # print Markdown to stdout
+projector export markdown -o dash.md                    # write to a file
 ```
 
 ---

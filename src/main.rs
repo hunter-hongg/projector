@@ -43,9 +43,10 @@ fn main() -> Result<()> {
             path,
             shared,
             project,
+            outdated,
             format,
         } => {
-            subcmd::deps::subcmd_deps(path, shared, project, format)?;
+            subcmd::deps::subcmd_deps(path, shared, project, outdated, format)?;
             Ok(())
         }
         Commands::Scan { dir } => {
@@ -103,6 +104,12 @@ fn main() -> Result<()> {
             action: ExportAction::Html { output },
         } => {
             subcmd::export::subcmd_export_html(output)?;
+            Ok(())
+        }
+        Commands::Export {
+            action: ExportAction::Markdown { output },
+        } => {
+            subcmd::export::subcmd_export_markdown(output)?;
             Ok(())
         }
         Commands::Snapshot {

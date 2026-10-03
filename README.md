@@ -32,6 +32,18 @@ projector report --diff
 projector report -f json
 projector report -f md
 
+# Check for newer upstream dependency versions
+projector deps --outdated
+projector deps --shared --outdated -f json
+
+# Export a Markdown (or HTML) dashboard
+projector export markdown
+projector export markdown -o dash.md
+projector export html -o dash.html
+
+# Daily brief as Markdown (paste into notes)
+projector brief -f md
+
 # Show the current config
 projector config
 
@@ -51,8 +63,8 @@ Full manual: [USAGE.md](USAGE.md).
 | `scan [dir]` | Scan projects and save a snapshot to `~/.projector/snapshots/` |
 | `report [--diff] [-f json\|md]` | Health dashboard with sorting, filtering, diff |
 | `activity [--days] [--project]` | Commit activity stats per project |
-| `brief [--days]` | Project brief (total, health distribution, active projects) |
-| `deps [path] [--shared]` | Dependency analysis (Cargo / npm / go / Python) |
+| `brief [--days] [-f json\|md]` | Daily brief: totals, health distribution, active projects |
+| `deps [path] [--shared] [--outdated]` | Dependency analysis (Cargo / npm / go / Python); `--outdated` checks upstream versions |
 | `orphans [--days] [--all]` | Find orphan projects (no remote + inactive) |
 | `rank [--by] [--top]` | Rank by health / LOC / activity / age / commits |
 | `search <query> [--tag]` | Search projects (name, path, type, tags) |
@@ -62,7 +74,7 @@ Full manual: [USAGE.md](USAGE.md).
 | `stats` | Global statistics |
 | `trend [path] [--metric]` | Cross-snapshot trend chart (ASCII) |
 | `completion <shell>` | Generate shell completion scripts |
-| `export html [-o]` | Export HTML dashboard |
+| `export html\|markdown [-o]` | Export dashboard as HTML or Markdown |
 | `snapshot prune\|migrate` | Snapshot management (prune old snapshots, migrate schema) |
 | `tag list\|set\|rm\|clear` | Project tag management |
 

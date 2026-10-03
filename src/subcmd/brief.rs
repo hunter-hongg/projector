@@ -7,10 +7,14 @@ use crate::color;
 use crate::config::Config;
 use crate::format::OutputFormat;
 use crate::git;
+use crate::markdown;
 use crate::snapshot::SnapshotStore;
 
 pub fn subcmd_brief(days: u32, format: Option<String>) -> Result<()> {
-    let fmt = OutputFormat::parse(format.as_deref(), &[OutputFormat::Json])?;
+    let fmt = OutputFormat::parse(
+        format.as_deref(),
+        &[OutputFormat::Json, OutputFormat::Markdown],
+    )?;
 
     let config = Config::load()?;
     let stale_threshold = config.report.stale_threshold_days;
@@ -105,6 +109,21 @@ pub fn subcmd_brief(days: u32, format: Option<String>) -> Result<()> {
             "total_commits": active.iter().map(|(_, _, c)| c).sum::<u32>(),
         });
         println!("{}", serde_json::to_string_pretty(&json)?);
+    } else if fmt.is_markdown() {
+        print_brief_markdown(&BriefMarkdown {
+            active: &active,
+            total,
+            total_loc,
+            avg_health,
+            high,
+            mid,
+            low,
+            dirty,
+            stale,
+            stale_threshold,
+            days,
+            now: &now,
+        })?;
     } else {
         println!();
         println!(
@@ -150,6 +169,82 @@ pub fn subcmd_brief(days: u32, format: Option<String>) -> Result<()> {
     Ok(())
 }
 
+/// Inputs for [`print_brief_markdown`], gathered so the helper does not need 12
+/// positional arguments.
+struct BriefMarkdown<'a> {
+    active: &'a [(String, String, u32)],
+    total: usize,
+    total_loc: u32,
+    avg_health: f64,
+    high: usize,
+    mid: usize,
+    low: usize,
+    dirty: usize,
+    stale: usize,
+    stale_threshold: u32,
+    days: u32,
+    now: &'a chrono::NaiveDateTime,
+}
+
+/// Markdown rendering for the daily `brief` — a pasteable digest.
+///
+/// Kept as a pure formatting function (no snapshot access) so it is trivially
+/// unit-testable. The terminal branch above still owns the colourful table view.
+fn print_brief_markdown(ctx: &BriefMarkdown) -> Result<()> {
+    println!("# Project Brief — {}", ctx.now.format("%Y-%m-%d"));
+    println!();
+    println!("**Window:** last {} days", ctx.days);
+    println!();
+
+    println!(
+        "{}",
+        markdown::table(
+            &["Metric", "Value"],
+            &[
+                vec!["Total projects".into(), ctx.total.to_string()],
+                vec!["Avg health".into(), format!("{:.1}", ctx.avg_health)],
+                vec!["Health: good (≥80)".into(), ctx.high.to_string()],
+                vec!["Health: fair (50–79)".into(), ctx.mid.to_string()],
+                vec!["Health: poor (<50)".into(), ctx.low.to_string()],
+                vec!["Total LOC".into(), ctx.total_loc.to_string()],
+                vec!["Dirty projects".into(), ctx.dirty.to_string()],
+                vec![
+                    format!("Stale (>{}d)", ctx.stale_threshold),
+                    ctx.stale.to_string(),
+                ],
+            ],
+        )
+    );
+
+    println!();
+    println!("## Activity (last {} days)", ctx.days);
+    println!();
+
+    if ctx.active.is_empty() {
+        println!("No commits in the last {} days.", ctx.days);
+    } else {
+        println!(
+            "{}",
+            markdown::table(
+                &["Project", "Type", "Commits"],
+                &ctx.active
+                    .iter()
+                    .map(|(name, ptype, count)| {
+                        vec![
+                            markdown::inline_code(name),
+                            ptype.clone(),
+                            count.to_string(),
+                        ]
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        );
+    }
+
+    println!();
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,5 +265,14 @@ mod tests {
     fn test_brief_graceful_no_snapshot() {
         let result = subcmd_brief(1, None);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_brief_accepts_json_and_markdown() {
+        // `fmt` validation must allow md now that brief is a Markdown producer.
+        assert!(subcmd_brief(1, Some("json".into())).is_ok());
+        assert!(subcmd_brief(1, Some("md".into())).is_ok());
+        // No snapshot on disk, so both paths hit the graceful branch.
+        assert!(subcmd_brief(1, Some("markdown".into())).is_ok());
     }
 }

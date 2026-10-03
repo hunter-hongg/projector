@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use crate::markdown;
+
 #[derive(Serialize)]
 pub struct DashboardData {
     pub project_count: usize,
@@ -323,4 +325,212 @@ fn html_escape(s: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+/// Render the dashboard as a self-contained Markdown document.
+pub fn render_markdown(data: &DashboardData) -> String {
+    let mut md = String::new();
+
+    md.push_str(&format!(
+        "# Projector Dashboard\n\n*Scanned at {} · {} projects*\n",
+        markdown::escape_cell(&data.scanned_at),
+        data.project_count,
+    ));
+
+    md.push_str("\n## Summary\n\n");
+    md.push_str(&markdown::table(
+        &["Metric", "Value"],
+        &[
+            vec!["Projects".into(), data.project_count.to_string()],
+            vec!["Average health".into(), format!("{:.1}", data.avg_health)],
+            vec!["Total LOC".into(), data.total_loc.to_string()],
+            vec![
+                "Dirty ratio".into(),
+                format!("{:.0}%", data.dirty_ratio * 100.0),
+            ],
+            vec![
+                "Stale ratio".into(),
+                format!("{:.0}%", data.stale_ratio * 100.0),
+            ],
+        ],
+    ));
+
+    md.push_str("\n## Health Distribution\n\n");
+    md.push_str(&markdown::table(
+        &["Bucket", "Count"],
+        &[
+            vec!["Good (≥ 80)".into(), data.health_high.to_string()],
+            vec!["Fair (50–79)".into(), data.health_mid.to_string()],
+            vec!["Poor (< 50)".into(), data.health_low.to_string()],
+        ],
+    ));
+
+    md.push_str("\n## Type Distribution\n\n");
+    md.push_str(&markdown::table(
+        &["Type", "Count"],
+        &data
+            .type_distribution
+            .iter()
+            .map(|t| vec![t.name.clone(), t.count.to_string()])
+            .collect::<Vec<_>>(),
+    ));
+
+    md.push_str("\n## Rankings\n\n");
+    md.push_str("### Top 5\n\n");
+    md.push_str(&markdown::table(
+        &["Project", "Health"],
+        &data
+            .top5
+            .iter()
+            .map(|p| vec![p.name.clone(), format!("{}/100", p.health)])
+            .collect::<Vec<_>>(),
+    ));
+    md.push_str("\n### Bottom 5\n\n");
+    md.push_str(&markdown::table(
+        &["Project", "Health"],
+        &data
+            .bottom5
+            .iter()
+            .map(|p| vec![p.name.clone(), format!("{}/100", p.health)])
+            .collect::<Vec<_>>(),
+    ));
+
+    md.push_str("\n## Projects\n\n");
+    md.push_str(&markdown::table(
+        &["Project", "Type", "Branch", "Status", "Health"],
+        &data
+            .projects
+            .iter()
+            .map(|p| {
+                vec![
+                    p.name.clone(),
+                    p.project_type.clone(),
+                    p.branch.clone(),
+                    p.status.clone(),
+                    format!("{}/100", p.health),
+                ]
+            })
+            .collect::<Vec<_>>(),
+    ));
+
+    md.push('\n');
+    md
+}
+
+pub fn render_empty_markdown() -> String {
+    "# Projector Dashboard\n\nNo snapshot found. Run `projector scan` first.\n".to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample() -> DashboardData {
+        DashboardData {
+            project_count: 2,
+            avg_health: 75.0,
+            total_loc: 1000,
+            dirty_ratio: 0.5,
+            stale_ratio: 0.0,
+            health_high: 1,
+            health_mid: 1,
+            health_low: 0,
+            projects: vec![
+                DashboardProject {
+                    name: "proj-a".into(),
+                    project_type: "Rust".into(),
+                    branch: "main".into(),
+                    status: "clean".into(),
+                    health: 90,
+                },
+                DashboardProject {
+                    name: "proj-b".into(),
+                    project_type: "Python".into(),
+                    branch: "feat|x".into(),
+                    status: "dirty".into(),
+                    health: 60,
+                },
+            ],
+            type_distribution: vec![
+                TypeDistItem {
+                    name: "Rust".into(),
+                    count: 1,
+                },
+                TypeDistItem {
+                    name: "Python".into(),
+                    count: 1,
+                },
+            ],
+            top5: vec![RankItem {
+                name: "proj-a".into(),
+                health: 90,
+            }],
+            bottom5: vec![RankItem {
+                name: "proj-b".into(),
+                health: 60,
+            }],
+            has_data: true,
+            scanned_at: "2026-05-22 12:00:00".into(),
+        }
+    }
+
+    #[test]
+    fn markdown_contains_every_section() {
+        let md = render_markdown(&sample());
+        for header in [
+            "# Projector Dashboard",
+            "## Summary",
+            "## Health Distribution",
+            "## Type Distribution",
+            "## Rankings",
+            "### Top 5",
+            "### Bottom 5",
+            "## Projects",
+        ] {
+            assert!(md.contains(header), "missing {header}");
+        }
+    }
+
+    #[test]
+    fn markdown_table_rows_match_column_count() {
+        let md = render_markdown(&sample());
+        let header = md
+            .lines()
+            .find(|l| l.starts_with("| Project | Type |"))
+            .unwrap_or_else(|| panic!("Projects header missing from:\n{md}"));
+        let row = md
+            .lines()
+            .find(|l| l.starts_with("| proj-a | Rust |"))
+            .unwrap_or_else(|| panic!("proj-a data row missing from:\n{md}"));
+        assert_eq!(
+            cell_count(header),
+            cell_count(row),
+            "header and data row disagree:\n{header}\n{row}"
+        );
+        assert_eq!(cell_count(header), 5);
+    }
+
+    #[test]
+    fn pipe_in_branch_name_is_escaped() {
+        let md = render_markdown(&sample());
+        // `find` matches the Rankings row first ("| proj-b | 60/100"), so
+        // locate the Projects table row specifically — it is the 5-column one.
+        let row = md
+            .lines()
+            .find(|l| l.starts_with("| proj-b |") && l.matches(" |").count() > 3)
+            .unwrap_or_else(|| panic!("proj-b projects row missing from:\n{md}"));
+        assert!(row.contains(r"feat\|x"), "expected escaped pipe in {row}");
+    }
+
+    #[test]
+    fn empty_markdown_mentions_scan() {
+        let md = render_empty_markdown();
+        assert!(md.contains("No snapshot found"));
+        assert!(md.contains("projector scan"));
+    }
+
+    /// Number of cells in a Markdown table row (non-empty `|`-delimited fields).
+    fn cell_count(line: &str) -> usize {
+        line.split('|').filter(|s| !s.trim().is_empty()).count()
+    }
 }

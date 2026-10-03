@@ -272,3 +272,250 @@ fn version_and_help_smoke() {
 
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn tag_lifecycle_via_cli() {
+    let root = scratch("tag");
+    let home = root.join("home");
+    let work = root.join("work");
+    git_repo(&work.join("tagged-a"));
+    git_repo(&work.join("tagged-b"));
+
+    // scan first so the projects exist in a snapshot (tagging itself only
+    // needs a path string, but this exercises scan + tag together).
+    let scan = projector(&home, &["scan", work.to_str().unwrap()]);
+    assert!(scan.status.success(), "scan failed: {}", stderr(&scan));
+
+    // tag set / list / rm / clear
+    let set = projector(
+        &home,
+        &["tag", "set", work.join("tagged-a").to_str().unwrap(), "go"],
+    );
+    assert!(set.status.success(), "tag set failed: {}", stderr(&set));
+    assert!(stdout(&set).contains("Tagged"));
+
+    let list = projector(&home, &["tag", "list"]);
+    assert!(list.status.success(), "tag list failed: {}", stderr(&list));
+    assert!(stdout(&list).contains("go"));
+
+    let tagged = projector(
+        &home,
+        &["tag", "list", work.join("tagged-a").to_str().unwrap()],
+    );
+    assert!(tagged.status.success());
+    assert!(stdout(&tagged).contains("go"));
+
+    let rm = projector(
+        &home,
+        &["tag", "rm", work.join("tagged-a").to_str().unwrap(), "go"],
+    );
+    assert!(rm.status.success());
+    assert!(stdout(&rm).contains("Removed tag"));
+
+    let cleared = projector(
+        &home,
+        &["tag", "clear", work.join("tagged-a").to_str().unwrap()],
+    );
+    assert!(cleared.status.success());
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn export_html_and_markdown_via_cli() {
+    let root = scratch("export");
+    let home = root.join("home");
+    let work = root.join("work");
+    git_repo(&work.join("app-x"));
+    git_repo(&work.join("app-y"));
+
+    let scan = projector(&home, &["scan", work.to_str().unwrap()]);
+    assert!(scan.status.success(), "scan failed: {}", stderr(&scan));
+
+    // HTML to stdout contains the dashboard doctype marker.
+    let html = projector(&home, &["export", "html"]);
+    assert!(
+        html.status.success(),
+        "export html failed: {}",
+        stderr(&html)
+    );
+    assert!(stdout(&html).contains("Projector Dashboard"));
+
+    // HTML to a file lands on disk.
+    let html_file = root.join("dash.html");
+    let html_out = projector(
+        &home,
+        &["export", "html", "-o", html_file.to_str().unwrap()],
+    );
+    assert!(html_out.status.success(), "{}", stderr(&html_out));
+    assert!(html_file.exists());
+    assert!(
+        std::fs::read_to_string(&html_file)
+            .unwrap()
+            .contains("Projector Dashboard")
+    );
+
+    // Markdown to stdout.
+    let md = projector(&home, &["export", "markdown"]);
+    assert!(
+        md.status.success(),
+        "export markdown failed: {}",
+        stderr(&md)
+    );
+    assert!(stdout(&md).contains("# Projector Dashboard"));
+    assert!(stdout(&md).contains("| Project | Type |"));
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn completion_emits_valid_for_all_shells() {
+    let root = scratch("completion");
+    let home = root.join("home");
+
+    for shell in &["bash", "zsh", "fish"] {
+        let out = projector(&home, &["completion", shell]);
+        // clap_complete prints to stdout and exits 0.
+        assert!(
+            out.status.success(),
+            "completion {shell} failed: {}",
+            stderr(&out)
+        );
+        let text = stdout(&out);
+        assert!(!text.is_empty(), "completion {shell} was empty");
+        // Each generator references the CLI name.
+        assert!(
+            text.to_lowercase().contains("projector"),
+            "completion {shell} did not reference projector"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn snapshot_prune_keeps_latest() {
+    let root = scratch("prune");
+    let home = root.join("home");
+    let work = root.join("work");
+    git_repo(&work.join("app"));
+
+    // Snapshot filenames are second-resolution (`YYYYMMDD_HHMMSS.json`), so
+    // two `scan` calls within the same second collide — write a second snapshot
+    // directly under an earlier name to model the on-disk state `prune` reads.
+    let scan = projector(&home, &["scan", work.to_str().unwrap()]);
+    assert!(scan.status.success(), "scan failed: {}", stderr(&scan));
+
+    let dir = snapshots_dir(&home);
+    let fresh: Vec<_> = std::fs::read_dir(&dir).unwrap().collect();
+    assert_eq!(fresh.len(), 1, "scan should write exactly one snapshot");
+    let fresh_src = fresh[0].as_ref().unwrap().path();
+    let legacy_dst = dir.join("20200101_000000.json");
+    std::fs::copy(&fresh_src, &legacy_dst).unwrap();
+
+    assert_eq!(
+        std::fs::read_dir(&dir).unwrap().count(),
+        2,
+        "expected two snapshots before pruning"
+    );
+
+    // Dry run reports but does not delete.
+    let dry = projector(&home, &["snapshot", "prune", "--keep", "1", "--dry-run"]);
+    assert!(dry.status.success(), "{}", stderr(&dry));
+    assert!(stdout(&dry).contains("Would remove"));
+    assert_eq!(
+        std::fs::read_dir(&dir).unwrap().count(),
+        2,
+        "dry run must not delete"
+    );
+
+    // Real prune keeps exactly `--keep`.
+    let real = projector(&home, &["snapshot", "prune", "--keep", "1"]);
+    assert!(real.status.success(), "{}", stderr(&real));
+    assert!(stdout(&real).contains("Removed 1 snapshot"));
+    assert_eq!(
+        std::fs::read_dir(&dir).unwrap().count(),
+        1,
+        "pruning must leave exactly the kept count"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn stats_emits_json_and_counts_projects() {
+    let root = scratch("stats");
+    let home = root.join("home");
+    let work = root.join("work");
+    git_repo(&work.join("a"));
+    git_repo(&work.join("b"));
+
+    let scan = projector(&home, &["scan", work.to_str().unwrap()]);
+    assert!(scan.status.success(), "{}", stderr(&scan));
+
+    let stats = projector(&home, &["stats", "-f", "json"]);
+    assert!(stats.status.success(), "{}", stderr(&stats));
+    let json: serde_json::Value = serde_json::from_str(&stdout(&stats)).unwrap();
+    assert_eq!(json["total_projects"], 2);
+    assert!(json["avg_health"].as_f64().is_some());
+    assert!(json["health_buckets"]["high_ge80"].as_u64().is_some());
+
+    // Without -f json, the terminal table still renders.
+    let term = projector(&home, &["stats"]);
+    assert!(term.status.success(), "{}", stderr(&term));
+    assert!(stdout(&term).contains("Global project statistics"));
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn deps_outdated_is_offline_without_the_flag() {
+    let root = scratch("deps_noflag");
+    let home = root.join("home");
+    let work = root.join("work");
+    git_repo(&work.join("a"));
+    // A real package.json so npm could be consulted, but the flag is absent.
+    std::fs::write(
+        work.join("a").join("package.json"),
+        r#"{"dependencies":{"lodash":"*"}}"#,
+    )
+    .unwrap();
+
+    let scan = projector(&home, &["scan", work.to_str().unwrap()]);
+    assert!(scan.status.success(), "{}", stderr(&scan));
+
+    // No --outdated: the deps JSON must not contain an `outdated` block at all,
+    // proving we did not shell out to any registry tool.
+    let deps = projector(&home, &["deps", "-f", "json"]);
+    assert!(deps.status.success(), "{}", stderr(&deps));
+    let json: serde_json::Value = serde_json::from_str(&stdout(&deps)).unwrap();
+    // `deps` JSON without `--outdated` sets the key to `null`, not omitting it.
+    assert!(
+        json.get("outdated")
+            .unwrap_or(&serde_json::Value::Null)
+            .is_null(),
+        "deps without --outdated must not invoke outdated checks: {json}"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn brief_markdown_is_pastable_digested() {
+    let root = scratch("brief_md");
+    let home = root.join("home");
+    let work = root.join("work");
+    git_repo(&work.join("app"));
+
+    let scan = projector(&home, &["scan", work.to_str().unwrap()]);
+    assert!(scan.status.success(), "{}", stderr(&scan));
+
+    let md = projector(&home, &["brief", "-f", "md"]);
+    assert!(md.status.success(), "{}", stderr(&md));
+    let text = stdout(&md);
+    assert!(text.contains("# Project Brief"));
+    assert!(text.contains("| Metric | Value |"));
+    assert!(text.contains("| Project | Type | Commits |"));
+
+    let _ = std::fs::remove_dir_all(&root);
+}

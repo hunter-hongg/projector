@@ -121,6 +121,31 @@ pub fn subcmd_export_html(output: Option<String>) -> Result<()> {
     Ok(())
 }
 
+/// `projector export markdown` — render the dashboard as a Markdown document,
+/// mirroring [`subcmd_export_html`] but using [`export_template::render_markdown`].
+pub fn subcmd_export_markdown(output: Option<String>) -> Result<()> {
+    let config = Config::load()?;
+
+    let md = match SnapshotStore::load_latest()? {
+        Some(latest) => {
+            let data = build_dashboard_data(&latest, &config);
+            export_template::render_markdown(&data)
+        }
+        None => export_template::render_empty_markdown(),
+    };
+
+    if let Some(ref path) = output {
+        ensure_parent_dir(path)?;
+        std::fs::write(path, &md)?;
+        println!("Exported Markdown dashboard to {}", path);
+    } else {
+        // A trailing newline keeps `projector export markdown > dash.md`
+        // clean when piping to a file.
+        print!("{}", md);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
